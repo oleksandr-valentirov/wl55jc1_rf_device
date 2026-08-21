@@ -57,6 +57,7 @@ No RTOS: `main()` initialises and then polls the console.
 ```bash
 tools/check_conventions.sh
 tools/check_docs.py            # чи існує ще те, що документація називає
+tools/test_check_docs.py       # спільний корпус: чи погоджуються дві копії чекера
 ```
 
 Другий перевіряє слабше твердження, ніж «абзац правдивий», — жоден інструмент

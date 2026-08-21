@@ -38,21 +38,23 @@ PATH = re.compile(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*/[A-Za-z0-9_.-]*"
                   r"\.(?:c|h|py|sh|md|txt|ld))(?::(\d+))?`")
 
 
-def load_allow():
-    """Exemptions as page:name, and the reason is required rather than conventional."""
-    exact, glob, bad = set(), set(), []
-    if not os.path.exists(ALLOW):
-        return exact, glob, bad
-    for n, raw in enumerate(open(ALLOW, encoding="utf-8"), 1):
+def load_allow(path):
+    """Exemptions as page:name. Both rules are checks, not conventions."""
+    exact, bad = set(), []
+    if not os.path.exists(path):
+        return exact, bad
+    for n, raw in enumerate(open(path, encoding="utf-8"), 1):
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
         entry, sep, reason = raw.partition("#")
         entry = entry.strip()
         if not sep or not reason.strip():
-            bad.append("%s:%d: %s" % (ALLOW, n, entry))
-            continue
-        (exact if ":" in entry else glob).add(entry)
-    return exact, glob, bad
+            bad.append("%s:%d: %s -- no reason given" % (path, n, entry))
+        elif ":" not in entry:
+            bad.append("%s:%d: %s -- not page:name" % (path, n, entry))
+        else:
+            exact.add(entry)
+    return exact, bad
 
 
 def source_text():
@@ -69,8 +71,8 @@ def source_text():
         for f in files:
             if any(s in f for s in ("third_party", "/Drivers/", "/Middlewares/")):
                 continue
-            # The exemption list would otherwise prove its own exemptions.
-            if f.endswith("docs_allow.txt"):
+            # Read as source, each would prove its own names.
+            if f.endswith(("docs_allow.txt", "test_check_docs.py")):
                 continue
             try:
                 blob.append(open(os.path.join(root, f),
@@ -88,11 +90,24 @@ def doc_pages():
                     yield os.path.join(dirpath, n)
 
 
-def main():
-    if not os.path.isdir(DOCS):
-        sys.stderr.write("no %s; nothing to check\n" % DOCS)
+def parse_args(argv):
+    """The corpus runs this against either copy, so the three paths are arguments."""
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--docs", default=DOCS)
+    ap.add_argument("--scopes", nargs="+", default=list(SCOPES))
+    ap.add_argument("--allow", default=ALLOW)
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    globals()["DOCS"] = args.docs
+    globals()["SCOPES"] = tuple(args.scopes)
+    if not os.path.isdir(args.docs):
+        sys.stderr.write("no %s; nothing to check\n" % args.docs)
         return 0
-    exact, glob, bad = load_allow()
+    exact, bad = load_allow(args.allow)
     words = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", source_text()))
 
     missing_ident, missing_path, pages = [], [], 0
@@ -102,7 +117,7 @@ def main():
         rel = os.path.relpath(page, DOCS)
 
         def allowed(name):
-            return name in glob or ("%s:%s" % (rel, name)) in exact
+            return ("%s:%s" % (rel, name)) in exact
 
         # Prefixed names only: an excerpt's locals resolve anyway.
         for span in CODE.finditer(text):
@@ -145,7 +160,7 @@ def main():
     print("scope: %d pages under %s\n" % (pages, "/, ".join(SCOPES) + "/"))
     for title, items in (("named in the docs, absent from the code", missing_ident),
                          ("file paths in the docs that do not resolve", missing_path),
-                         ("exemptions with no reason given", bad)):
+                         ("exemptions this file will not accept", bad)):
         print("== %s: %d ==" % (title, len(items)))
         for i in items:
             print("   " + i)

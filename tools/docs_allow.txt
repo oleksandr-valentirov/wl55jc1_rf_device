@@ -1,22 +1,19 @@
 # Names this side's documentation may use that the code does not define.
-# tools/check_docs.py reads this. Two rules, both earned on the first run:
+# tools/check_docs.py reads this. This file is excluded from the source scan:
+# it names every exempted symbol, so reading it as source would make the list
+# evidence that its own symbols exist, and any name added here would go silent
+# on every page. tools/test_check_docs.py asserts that exclusion.
 #
-# 1. An entry is page-relative-path:name, not a bare name. RADIO_PRE_SYNC_US is
-#    a correct historical quotation on radio/driver.md and was a stale claim in
-#    live arithmetic on radio/timebase.md on the same day. A name-keyed list
-#    cannot say that, and one line would have silenced the wrong occurrence.
-# 2. The reason after # is required, not conventional. An exemption without one
-#    is reported as a defect of this file, because a list that absorbs a real
-#    stale name is worse than no list.
+# Two rules, both checks rather than conventions:
 #
-# A bare name with no colon still exempts everywhere, for algebra and for terms
-# that are not identifiers anywhere.
-
-t_air     # algebra in the slot-budget derivations, not an identifier
-t_hub     # likewise
-t_latch   # likewise
-tx_seq    # likewise
-hub_ephemeral  # a term in the key-agreement formula, not a variable
+# 1. An entry is page-relative-path:name. RADIO_PRE_SYNC_US is a correct
+#    historical quotation on radio/driver.md and was a stale claim in live
+#    arithmetic on radio/timebase.md on the same day; a name-keyed list cannot
+#    say that, and one line would silence the wrong occurrence. Five inherited
+#    bare names were deleted on 2026-08-22 after removing them changed nothing:
+#    they were the hub's algebra terms, exempting names this scope never uses.
+# 2. The reason after # is required. A list that absorbs a real stale name is
+#    worse than no list.
 
 wl55_device/radio/driver.md:RADIO_PRE_SYNC_US  # named as the duplicate deleted in item 39
 wl55_device/radio/driver.md:radio_air_time_us  # the general verb, named as what was split
