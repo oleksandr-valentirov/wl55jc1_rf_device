@@ -2029,6 +2029,10 @@ static uint32_t hub_us_to_local(uint32_t hub_us);
 static uint8_t  dl_ack_seq, dl_ack_cmd, dl_ack_arg, dl_any;
 static uint32_t dl_applied, dl_repeats, dl_replays;
 
+/* A silence this device imposed on itself. A reboot is not one: uptime_s says that.
+ * radio_devices_docs/radio/tdma.md */
+static uint8_t tx_self_silenced;
+
 /* A counter, not the hub's tuple: this slot field never varies.
  * radio_devices_docs/wl55_device/security/replay.md */
 static uint32_t dl_floor;
@@ -2250,10 +2254,14 @@ static int cmd_uplink(int argc, char **argv) {
     rep.ack_seq   = dl_ack_seq;
     rep.ack_cmd   = dl_ack_cmd;
     rep.ack_arg   = dl_ack_arg;
+    if (tx_self_silenced)
+        rep.flags |= RADIO_REPORT_FLAG_RESUMED;
 
     /* An unreserved counter is nonce reuse after the next reboot. */
-    if (!replay && !tx_gate(sf))
+    if (!replay && !tx_gate(sf)) {
+        tx_self_silenced = 1;
         return 0;
+    }
 
     if (replay) {
         /* Re-sending sealed bytes claims nothing: the nonce was spent already. */
@@ -2292,6 +2300,8 @@ static int cmd_uplink(int argc, char **argv) {
         return 0;
     }
     if (!replay) {
+        /* Spent on the frame that carried it; replayed bytes carry the old flags. */
+        tx_self_silenced = 0;
         memcpy(last_f, f, sizeof(f));
         last_sf = sf;
         have_last = 1;
@@ -2925,8 +2935,12 @@ void report_service(void) {
     /* Unreserved is nonce reuse after a reboot. A refusal that skips the
      * top-up denies for ever. */
     uint8_t may_send = (uint8_t)(reserve_covers(sf) != 0);
-    if (!may_send)
+    if (!may_send) {
         tlm_emit(TLM_TX_DENY, sf, TLM_WHY_RESERVE, 0u, 0u);
+        tx_self_silenced = 1;
+    }
+    if (tx_self_silenced)
+        rep.flags |= RADIO_REPORT_FLAG_RESUMED;
 
     /* Every k is the same channel a second apart: a receiver's own spread. */
     uint8_t k_first = report_opp_all ? 0u : report_opp;
@@ -2962,6 +2976,8 @@ void report_service(void) {
         int32_t  off = (int32_t)(micros() - air - slot_at) + (int32_t)ramp;
 
         tlm_emit(TLM_TX_UP, sf, slot_n, (uint32_t)off, grid);
+        /* Spent on the frame that carried it, not on the one that was built. */
+        tx_self_silenced = 0;
     }
 
     /* The gap, not the slot. A denied cycle reaches it too, and only it clears one. */
