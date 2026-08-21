@@ -140,10 +140,9 @@ the hub repository has the headless recipe.
 ## Skills
 
 Deep knowledge lives in skills. Load the one that matches the task before
-starting. `telemetry` is this repository's, in `.claude/skills/`. `sdr` and
-`cubemx` are shared and live in global storage, `~/.claude/skills/`, which no
-repository owns. `verification` is shared and still in
-`../OpenHub/.claude/skills/`.
+starting. `telemetry` is this repository's, in `.claude/skills/`. `sdr`,
+`cubemx` and `verification` are shared and live in global storage,
+`~/.claude/skills/`, which no repository owns.
 
 **An edit to a skill in global storage is a message to the other session, not a
 commit** — there is no repository to put it in, so whoever changes one tells the
@@ -159,8 +158,10 @@ repository.
 | `telemetry` | adding an event, reading a stream, joining two boards' logs, or a poll is about to answer a question about *when* something happened |
 
 A new way a green check turned out to be worthless goes in `verification`, not
-here — and `verification` is still in the hub's tree, so that entry is sent to
-the hub session rather than committed from here.
+here. It is in global storage now, so **write the entry and tell the hub
+session** rather than sending the text across for them to land — the last entry
+sat finished for an hour because only they could commit it, which is the shared
+tree's hazard arriving as a delay instead of as a conflict.
 
 ## Where the open work lives
 
