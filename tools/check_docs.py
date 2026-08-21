@@ -27,6 +27,8 @@ IDENT = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\)|\(|`)")
 # Live arithmetic is written inside an expression or a fence, not alone in backticks.
 # radio_devices_docs/wl55_device/radio/timebase.md
 CODE = re.compile(r"```.*?```|`[^`\n]+`", re.S)
+# Lowercase calls in fences only: device_id(4) inline is a width, not a call.
+FENCE = re.compile(r"```.*?```", re.S)
 MACRO = re.compile(r"`(RADIO_[A-Z0-9_]+|STORE_[A-Z0-9_]+|BEACON_[A-Z0-9_]+"
                    r"|SUPERFRAME_[A-Z0-9_]+|TLM_[A-Z0-9_]+)`")
 # Only a path is a claim about where something lives; a bare file name is prose.
@@ -102,10 +104,18 @@ def main():
 
         # Prefixed names only: an excerpt's locals resolve anyway.
         for span in CODE.finditer(text):
+            body = span.group(0)
             for name in re.findall(r"\b(?:RADIO|STORE|BEACON|SUPERFRAME|TLM"
-                                   r"|FRAME|CRYPTO|IPC)_[A-Z0-9_]+\b", span.group(0)):
+                                   r"|FRAME|CRYPTO|IPC)_[A-Z0-9_]+\b", body):
                 if name not in words and not allowed(name):
                     missing_ident.append("%s: %s" % (rel, name))
+
+        for span in FENCE.finditer(text):
+            for name in re.findall(r"\b([a-z_][a-z0-9_]{3,})\s*\(", span.group(0)):
+                if "_" not in name or name.startswith(FOREIGN):
+                    continue
+                if name not in words and not allowed(name):
+                    missing_ident.append("%s: %s()" % (rel, name))
         for m in MACRO.finditer(text):
             name = m.group(1)
             if name not in words and not allowed(name):
