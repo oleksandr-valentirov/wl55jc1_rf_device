@@ -667,7 +667,7 @@ static int hop_channel_live(uint32_t sf, uint8_t *ch);
 
 #define DOWNLINK_RX_LEAD_US  8000u
 _Static_assert(RADIO_DOWNLINK_RX_OPEN_US - DOWNLINK_RX_LEAD_US >
-                   RADIO_FRAME_AIR_US(sizeof(radio_data_beacon_t)),
+                   RADIO_AIR_START_TO_END_US(sizeof(radio_data_beacon_t)),
                "receive lead would open inside the beacon and eat it instead");
 
 /* How long a receive stays open for a beacon that should already be there. */
@@ -778,8 +778,8 @@ static int cmd_time(int argc, char **argv) {
         /* Two estimates of one instant; the gap is wait_irq's poll latency. */
         if (info.capture_valid && info.capture_sync)
             out("frame start: RxDone-derived %+ld us against the sync ISR\r\n",
-                (long)(int32_t)((info.done_us - RADIO_FRAME_AIR_US(info.len)) -
-                                (info.capture_us - RADIO_PRE_SYNC_AIR_US)));
+                (long)(int32_t)((info.done_us - RADIO_AIR_START_TO_END_US(info.len)) -
+                                (info.capture_us - RADIO_AIR_START_TO_SYNC_US)));
         else if (info.capture_valid)
             out("frame start: capture is the preamble edge, not a frame start\r\n");
         else

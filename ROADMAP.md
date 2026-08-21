@@ -473,7 +473,7 @@ restart gate. Two frames confirm nothing but can aim the next window.
 ### 37. A runtime preamble walks past the assert that sizes the slot — `defect`
 
 `radio preamble <2..32>` writes `preamble_bits` and `radio_tx_air_time_us`
-follows it, but `_Static_assert(RADIO_FRAME_AIR_US(RADIO_UPLINK_BYTES) <=
+follows it, but `_Static_assert(RADIO_AIR_START_TO_END_US(RADIO_UPLINK_BYTES) <=
 RADIO_SLOT_US)` is written against the compile-time `RADIO_PREAMBLE_BYTES`, so a
 runtime change walks straight past the only check that the frame still fits its
 slot. An assert pinning two constants the same side owns pins nothing about the
@@ -520,7 +520,7 @@ inside the slot**.
 This item claimed the hub's receive-side arithmetic was correct only while this
 device stays at four bytes. **Checked on their side rather than accepted, and it
 is false**: their two consumers measure from the sync edge and subtract
-`RADIO_POST_SYNC_AIR_US`, which is the 42 bytes after the sync word and contains
+`RADIO_AIR_SYNC_TO_END_US`, which is the 42 bytes after the sync word and contains
 no preamble term. A sweep moves no hub figure. The announcement is still owed,
 for attribution rather than for arithmetic.
 
@@ -794,8 +794,8 @@ only the admission that 700 µs is "half the guard" because half seemed reasonab
 
 ### 10. No constant for radiated energy — `contract` `debt`
 
-`RADIO_AIRTIME_US` counts modulated bits, and two consumers roll back from the
-first bit using it, so it cannot be widened to include the PA ramp. The duty
+`RADIO_AIR_START_TO_END_US` counts modulated bits, and two consumers roll back
+from the first bit using it, so it cannot be widened to include the PA ramp. The duty
 cycle needs a third constant that does. **Model only, never a roll-back** — it
 must not be wired to anything that suppresses a transmit.
 
@@ -840,10 +840,13 @@ anchor 100 µs and might land correctly for a false reason, which is worse than
 leaving it. **Neither number is to be written into the shared header until the
 discriminator below has run.**
 
-The pre-sync term is **not** the explanation: it is derived from
-`RADIO_US_PER_BYTE` on both sides — `RADIO_PRE_SYNC_US` here, `RADIO_PRE_SYNC_AIR_US`
-in the shared header — so it halved with the rate on both and is 1280 µs on each.
-Checked 2026-08-22.
+The pre-sync term is **not** the explanation, and it is now less able to be one
+than when this was written. On 2026-08-22 it was two definitions of one quantity —
+`RADIO_PRE_SYNC_US` here beside `RADIO_PRE_SYNC_AIR_US` in the shared header,
+both derived from `RADIO_US_PER_BYTE`, both 1280 µs. The local one is deleted and
+the shared one is `RADIO_AIR_START_TO_SYNC_US`, so there is no longer a second
+value that could have differed. Checked 2026-08-22, and the hypothesis it ruled
+out can no longer be reintroduced.
 
 **The discriminator**: node B forges a beacon on its own boundary while node A
 reports the computed lag. Node B's boundary-to-first-bit is its own transmit

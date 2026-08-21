@@ -190,17 +190,11 @@ int radio_read_tx_buffer(uint8_t *out, uint8_t len) {
     return HAL_SUBGHZ_ReadBuffer(&hsubghz, TX_BASE_ADDR, out, len) == HAL_OK ? 0 : -1;
 }
 
-/* The PHY owns its overhead: preamble and CRC both move, and the macro pins neither.
- * radio_devices_docs/wl55_device/radio/driver.md */
-_Static_assert(RADIO_PHY_OVERHEAD_B ==
-                   RADIO_PREAMBLE_BYTES + RADIO_SYNC_BYTES + 1u + RADIO_CRC_BYTES,
-               "PHY overhead disagrees with its own parts");
-
 /* Takes the preamble as an argument so a value can be costed before it is set. */
 static uint32_t air_time_us(uint8_t preamble_b, uint8_t payload_len) {
-    uint32_t bytes = (uint32_t)preamble_b + sizeof(sync_word) + 1u
+    uint32_t bytes = (uint32_t)preamble_b + sizeof(sync_word) + RADIO_LENGTH_BYTES
                      + (uint32_t)payload_len
-                     + ((crc_type == CRC_OFF) ? 0u : 2u);
+                     + ((crc_type == CRC_OFF) ? 0u : RADIO_CRC_BYTES);
     return bytes * 8u * 1000000u / RADIO_BITRATE_BPS;
 }
 
@@ -211,7 +205,7 @@ uint32_t radio_tx_air_time_us(uint8_t payload_len) {
 /* The preamble on a received frame is the sender's, and only this side's is settable.
  * radio_devices_docs/radio/phy.md */
 uint32_t radio_rx_air_time_us(uint8_t payload_len) {
-    return RADIO_FRAME_AIR_US(payload_len);
+    return RADIO_AIR_START_TO_END_US(payload_len);
 }
 
 /* The register range is not the limit: the slot is.
@@ -569,7 +563,7 @@ static int receive_from(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info
     /* A preamble edge is not a frame start, and the preamble is the sender's.
      * radio_devices_docs/wl55_device/radio/timebase.md */
     info->start_us = (info->capture_valid && info->capture_sync)
-                   ? info->capture_us - RADIO_PRE_SYNC_AIR_US
+                   ? info->capture_us - RADIO_AIR_START_TO_SYNC_US
                    : info->done_us - radio_rx_air_time_us(len);
     clear_irq(0xFFFFu);
     return 0;

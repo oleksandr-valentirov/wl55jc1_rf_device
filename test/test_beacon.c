@@ -46,15 +46,15 @@ static void settle(superframe_t *sf, quiesce_t *q, uint32_t start) {
     host_clock_set(1000000u);
     superframe_start(sf, start, SUPERFRAME_US, start);
     uint8_t len = build(2u, start, 0u, 0u);
-    beacon_apply(frame, len, sf, q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+    beacon_apply(frame, len, sf, q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     host_clock_advance(SUPERFRAME_US);
     len = build(2u, start + 1u, 0u, 0u);
-    beacon_apply(frame, len, sf, q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+    beacon_apply(frame, len, sf, q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
 }
 
 static void announce(superframe_t *sf, quiesce_t *q, uint32_t at, uint8_t resume_in) {
     uint8_t len = build(2u, at, RADIO_BEACON_FLAG_QUIESCE, resume_in);
-    beacon_apply(frame, len, sf, q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+    beacon_apply(frame, len, sf, q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
 }
 
 static void test_gates(void) {
@@ -62,24 +62,24 @@ static void test_gates(void) {
     settle(&sf, &q, 100u);
 
     uint8_t len = build(1u, 102u, 0u, 0u);
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_BAD_VERSION,
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_BAD_VERSION,
           "v1 must be rejected, not parsed as v2");
     len = build(3u, 102u, 0u, 0u);
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_BAD_VERSION,
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_BAD_VERSION,
           "a future version must be rejected rather than misparsed");
 
     len = build(2u, 102u, 0u, 0u);
-    CHECK(beacon_apply(frame, len - 1u, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_BAD_LENGTH,
+    CHECK(beacon_apply(frame, len - 1u, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_BAD_LENGTH,
           "v2 at the wrong length must be rejected");
 
     frame[0] = RADIO_FRAME_JOIN_BEACON;
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_NOT_BEACON,
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_NOT_BEACON,
           "a join beacon is not a data beacon");
 
     /* Version before length: a future layout that is 14 bytes must still be refused.
      * radio_devices_docs/wl55_device/testing/host-tests.md */
     len = build(3u, 102u, 0u, 0u);
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_BAD_VERSION,
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_BAD_VERSION,
           "version must be checked before length");
 }
 
@@ -145,7 +145,7 @@ static void test_rate_limit(void) {
     for (uint32_t c = 102u; c <= 106u; c++) {
         host_clock_advance(SUPERFRAME_US);
         uint8_t len = build(2u, c, 0u, 0u);
-        beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+        beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     }
     CHECK(!q.active, "the quiesce must retire once its resume superframe passes");
 
@@ -160,7 +160,7 @@ static void test_rate_limit(void) {
     for (uint32_t c = 108u; c < 108u + RADIO_QUIESCE_MIN_GAP; c++) {
         host_clock_advance(SUPERFRAME_US);
         uint8_t len = build(2u, c, 0u, 0u);
-        beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+        beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     }
     host_clock_advance(SUPERFRAME_US);
     announce(&sf, &q, 108u + RADIO_QUIESCE_MIN_GAP, 4u);
@@ -189,7 +189,7 @@ static void test_rejection_then_announce(void) {
     settle(&sf, &q, 100u);
 
     uint8_t len = build(2u, 100u + SUPERFRAME_MAX_JUMP + 10u, 0u, 0u);
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_SUSPECT, "setup");
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_SUSPECT, "setup");
     CHECK(sf.rejected == 1u, "the forgery must be counted");
 
     host_clock_advance(SUPERFRAME_US);
@@ -229,7 +229,7 @@ static void test_recovers_from_running_ahead(void) {
     for (int i = 0; i < 64; i++) {
         host_clock_advance(SUPERFRAME_US);
         uint8_t len = build(2u, 1002u + (uint32_t)i, 0u, 0u);
-        if (beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_OK) {
+        if (beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_OK) {
             recovered = i + 1;
             break;
         }
@@ -255,7 +255,7 @@ static void test_resync_does_not_admit_quiesce(void) {
         host_clock_advance(SUPERFRAME_US);
         uint8_t len = build(2u, 1200u + SUPERFRAME_MAX_JUMP + 1000u + (uint32_t)i,
                             0u, 0u);
-        beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+        beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     }
     CHECK(!sf.aligned, "alignment must have been given up by now");
 
@@ -276,7 +276,7 @@ static void test_missed_beacon_does_not_poison_period(void) {
         /* Two superframes of clock, and a counter that says so. */
         host_clock_advance(2u * SUPERFRAME_US);
         uint8_t len = build(2u, 502u + i * 2u, 0u, 0u);
-        CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_OK,
+        CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_OK,
               "a beacon after a quiesce gap must still be accepted");
     }
     CHECK(sf.period_us >= SUPERFRAME_PERIOD_MIN_US &&
@@ -297,7 +297,7 @@ static void test_period_clamp(void) {
          * radio_devices_docs/wl55_device/testing/host-tests.md */
         host_clock_advance(3u * SUPERFRAME_US);
         uint8_t len = build(2u, 702u + i, 0u, 0u);
-        beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
+        beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     }
     CHECK(sf.period_us <= SUPERFRAME_PERIOD_MAX_US,
           "a lying transmitter walked the period to %lu, above the %u ceiling",
@@ -312,7 +312,7 @@ static void test_hub_reboot_jump_is_accepted(void) {
 
     host_clock_advance(SUPERFRAME_US);
     uint8_t len = build(2u, 5001u + 4096u, 0u, 0u);
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_OK,
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_OK,
           "a %u-superframe reserve jump must be accepted, not read as a forgery",
           4096u);
     CHECK(sf.counter == 5001u + 4096u, "counter %lu", (unsigned long)sf.counter);
@@ -321,7 +321,7 @@ static void test_hub_reboot_jump_is_accepted(void) {
     settle(&sf, &q, 5000u);
     host_clock_advance(SUPERFRAME_US);
     len = build(2u, 5001u + SUPERFRAME_MAX_JUMP + 1u, 0u, 0u);
-    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_SUSPECT,
+    CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_SUSPECT,
           "beyond SUPERFRAME_MAX_JUMP must still be refused");
 }
 
