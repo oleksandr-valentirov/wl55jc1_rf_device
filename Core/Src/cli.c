@@ -286,9 +286,13 @@ static int cmd_radio(int argc, char **argv) {
         uint32_t tries = 0;
         gap_stats_t g = {0};
 
+        uint32_t asked = want;
         if (want == 0u || want > 32u)
             want = 5u;
-        out("capture %s, %lu frames\r\n", radio_capture_name(), (unsigned long)want);
+        /* A default that stands in for a refused argument must say it did.
+         * radio_devices_docs/wl55_device/testing/console.md */
+        out("capture %s, %lu frames%s\r\n", radio_capture_name(),
+            (unsigned long)want, (asked != want) ? " (1..32; yours refused)" : "");
         while (g.n < want && tries < 4u * want) {
             radio_rx_info_t info = {0};
             info.timeout_us = 5000000u;
@@ -830,9 +834,11 @@ static int cmd_time(int argc, char **argv) {
             out("needs an aligned device - run \"time follow\" until it aligns\r\n");
             return 0;
         }
+        uint32_t asked = want;
         if (want == 0u || want > 64u)
             want = 8u;
-        out("capture %s, %lu beacons\r\n", radio_capture_name(), (unsigned long)want);
+        out("capture %s, %lu beacons%s\r\n", radio_capture_name(),
+            (unsigned long)want, (asked != want) ? " (1..64; yours refused)" : "");
         while (g.n < want && tries < 3u * want) {
             radio_rx_info_t info = {0};
             uint32_t aligned = 0;
@@ -2475,7 +2481,12 @@ static int cmd_downlink(int argc, char **argv) {
             sframe.measured_us ? "measured" : "STUB (deliberately wrong)");
         return 0;
     }
+    uint32_t frames_asked = frames;
     if (frames == 0u || frames > 32u) frames = 4u;
+    /* The count was clamped to the no-argument default and never printed at all.
+     * radio_devices_docs/wl55_device/testing/console.md */
+    out("listening for %lu superframes%s\r\n", (unsigned long)frames,
+        (frames_asked != frames) ? " (1..32; yours refused)" : "");
 
     /* Where the frames are, measured against my boundary, not whether they are expected.
      * radio_devices_docs/wl55_device/testing/console.md */
