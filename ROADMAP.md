@@ -8,6 +8,12 @@ the line here shrinks to a pointer.
 
 An item leaves this file when it is done, not when it is understood.
 
+**Cite a tag or a commit message, never a bare hash.** The history here was
+rebuilt into eleven themed commits on 2026-08-21, and every hash written before
+that stopped being reachable from `master` the moment it was. Three items in this
+file cited one; all three survived only through `pre-squash-2026-08-21`, and none
+of them failed loudly. A tag survives a rebuild and a hash does not.
+
 **Status words**
 
 | | |
@@ -91,8 +97,20 @@ count is `(R - 2*667ms) / w + 1`.
 `radio_slots.h:175` asserts `EVENT_GAP + latch + air < 1000000`, which holds at
 789250 us.
 
+**The arithmetic closes and the link does not.** The agreed-window measurement is
+**23 % detected, 20 % accepted** at -17 dBm, per slot 39/15/6 %. At a 20 % first-
+try acceptance rate the deadline is not met in practice whatever the geometry
+allows, and three opportunities at 20 % is not three chances at the deadline —
+it is 49 % of one. The hub's `radio/tdma.md` now states this plainly rather than
+quoting the old 876-of-876 at -24 dBm.
+
+**Item 21 blocks measuring it.** A k=3 PER run taken before this side has the
+tuple replay floor measures the floor, not the radio: two of every three frames
+are refused after their tag verifies. That boot would produce a number to throw
+away.
+
 **That assert was green on a capability this device did not have.** It computes
-`RADIO_EVENT_GAP_US` from `RADIO_SLOT_OPPS`, and until `b7188e0` the seal guard
+`RADIO_EVENT_GAP_US` from `RADIO_SLOT_OPPS`, and until the seal-guard fix (`pre-squash-2026-08-21`) the guard
 refused two of every three opportunities, so the number this side could use was
 one:
 
@@ -162,7 +180,7 @@ sixth unattended recovery, 2026-08-21:
     sync.jump sf=639087   was=635954  d=3133
     tx.up     sf=639088   three frames, immediately
 
-`git grep reserve_covers ab62ad0` finds nothing and finds two uses at HEAD, so
+`git grep reserve_covers pre-squash-2026-08-21` finds nothing and finds two uses at HEAD, so
 the running board **has no gate**: it followed a 3133-superframe jump and sealed
 three frames at a counter thousands past anything it had durably reserved. A
 power loss there restores a lower counter and the nonce space is reused - which
@@ -225,15 +243,24 @@ skill).
 
 Either wire the ADC or add the flag — the second is a contract change.
 
-**Proposal ready, not yet sent to the hub and not written.** `flags` in
-`radio_uplink_report_t` is a byte with one bit defined, `RSSI_STALE 0x01`, so
-bit 1 is free:
+**Agreed with the hub session 2026-08-22, and it is their item 32 to author.**
+`flags` is a byte with one bit defined, so the set is:
 
+    #define RADIO_REPORT_FLAG_RSSI_STALE    0x01
     #define RADIO_REPORT_FLAG_SUPPLY_STALE  0x02
+    #define RADIO_REPORT_FLAG_RESUMED       0x04
 
-No frame-size change, no slot re-derivation, no new field - the cheapest contract
-change available on this wire. The header is in the hub's tree, so it does not
-get written here until the hub session agrees it.
+No frame-size change, no slot re-derivation, no new field. **Masks, never bit
+positions** — this side wrote "bit 2" and `0x02` about two different flags in one
+message, which is the 45-vs-49 shape reached through an ordinal.
+
+Their item 7 is this defect seen from the other end: `supply_mv` printing 0 mV
+indistinguishably from unmeasured at `CM7/Core/Src/cli.c:636`. They render `—`
+when the bit is set, in the same commit as the wire change, so the bit is not
+decorative on arrival.
+
+**This side's obligation once the header lands: set the bit unconditionally until
+the ADC path exists**, so the wire never claims a measurement that was not taken.
 
 `Core/Src/cli.c:2166`, `Core/Src/cli.c:2462`.
 
@@ -248,7 +275,7 @@ the blocker for item 1, which needs the same loop to do several.
 
 ### 21. The replay rule refuses two frames of every three under k=3 — `defect` `contract`
 
-**The transmit half is fixed** (`b7188e0`): `seal_claim` was keyed on the
+**The transmit half is fixed** (in `feat(link)`, `pre-squash-2026-08-21`): `seal_claim` was keyed on the
 superframe alone, so this device could seal only the first of its three
 opportunities and refused its own k=1 and k=2 with `TLM_WHY_SEAL`. It now
 compares the pair `(superframe, slot)` lexicographically, which is the hub's
@@ -258,7 +285,20 @@ three frames on one channel 611 ms apart, which is the instrument the hub had
 been asking for all night to separate its own estimator's spread from the
 channel's.
 
-**The receive half and the durable floor are still open**, below.
+**The receive half and the durable floor are still open.** `Core/Src/frame.c:124`
+is `(int32_t)(superframe - ctx->last_accepted) <= 0`, the superframe alone, with
+no `rx_floor_slot` anywhere in this tree. Under k = 3 the second and third frames
+of a superframe take the `<= 0` branch and are refused. Confirmed to the hub
+2026-08-22; their `radio/tdma.md` now states it rather than hedging it.
+
+**And the refusal happens after the tag verifies, so the frames are counted as
+replays.** A replay counter climbing steadily on a healthy link reads as an
+attack and points at the radio — raised by the hub session, and it is how this
+will present before anyone suspects the floor.
+
+The hub's tuple floor is `rx_floor` beside `rx_floor_slot`, refusing on
+`age < 0 || (age == 0 && f.slot <= d->rx_floor_slot)`. This side has to become
+that.
 
 `frame_open` accepts only a strictly increasing superframe, and item 4 makes a
 device send three frames carrying the same one. The second and third are then
@@ -454,6 +494,23 @@ preamble change walks straight past the only check that the frame still fits its
 slot.** An assert pinning two constants the same side owns pins nothing about the
 value actually on the air (`verification`).
 
+**A second consumer, found 2026-08-22 and worse than the first**, because it
+corrupts measurements rather than frames: `RADIO_PRE_SYNC_US` also uses the
+compile-time `RADIO_PREAMBLE_BYTES`, and `start_us` subtracts it. So **any lag or
+sync-edge reading taken while the preamble was swept away from 4 bytes is out by
+`(set - 4) x RADIO_US_PER_BYTE`, silently, inside the subtraction.** Node B is at
+4 bytes today, so current readings are clean and older ones may not be — and
+**no log records what the preamble was at the time**, which is the actual gap.
+
+The hub cannot carry this contamination at any date: its preamble is not
+runtime-settable and `radio_phy.h:147` refuses a changed value at compile time.
+So whenever the hub is the measuring side, the preamble term is not a candidate
+explanation.
+
+Fix in two parts: print the preamble on every `radio slot` and `device synctime`
+line so a reading carries its own denominator, and make the pre-sync term follow
+the runtime value as `air_time_us` already does.
+
 By hand, which is the problem:
 
     frame air at 4 B preamble    8000 us
@@ -537,7 +594,7 @@ the spread between slot 1 and slot 131 as **-2473 us** against **-2910**
 predicted - same sign, same order, 57 samples here against two single edges
 there. Slot 131 already breaks its 1400 us guard on the early side.
 
-**Fixed in `ab62ad0`.** `hub_us_to_local` scales by
+**Fixed in `feat(timebase)`, `pre-squash-2026-08-21`.** `hub_us_to_local` scales by
 `measured_us / SUPERFRAME_US` at the three sites that spend hub microseconds.
 The device had been measuring its own clock error against the hub every
 superframe and not using it for the one thing it is for. A third, independent
@@ -584,6 +641,14 @@ number moved when the wire did:
 the frame to 50 bytes and the sustained k=3 figure to **1.200%** - twenty percent
 worse, and it moved silently because nothing recomputes it. At 25 kbps it is
 2.400%, so the deadline retires that rate for event-capable devices outright.
+
+**This is now the only duty-cycle constraint still binding anything.** The hub
+found that `RADIO_DOWNLINK_EVERY 2` was justified by a 1.42% figure that had been
+computed on a 31-byte downlink; at 39 bytes and 50 kbps the real total is 0.800%,
+and three copies of the stale 0.74% survived the change - including a comment
+sitting beside the assert that recomputes it correctly on every build. Half rate
+is a choice there now, not a requirement (their item 33). **The uplink k=3 figure
+above is the one that still refuses.**
 
 k=2 is 0.800% and still safe, but its margin fell from 0.33 to 0.20 points.
 
@@ -725,6 +790,12 @@ which assumed flush at slot start. Both sides stayed internally consistent while
 computing about different geometry, and it has already cost one wrong guard
 analysis.
 
+**Agreed with the hub session 2026-08-22: it goes into the shared header, once
+the anchor is trusted.** That waits on item 12 — writing an aim into the contract
+while the boundary it is measured from is in dispute would pin the wrong geometry
+in the one place both sides compile. No experiment is needed for the aim itself,
+only the admission that 700 µs is "half the guard" because half seemed reasonable.
+
 `verification` skill § know which artifact each assert pins.
 
 ### 10. No constant for radiated energy — `contract` `debt`
@@ -758,20 +829,53 @@ have a fresh estimate. **Only the hub can take the number** — the device's own
 
 `radio_devices_docs/radio/tdma.md` § lead time and guard band.
 
-### 12. `BEACON_BOUNDARY_LAG_US` is 100 µs short of the hub's own number — `debt`
+### 12. `BEACON_BOUNDARY_LAG_US` and the hub's number cannot both be right — `defect` `contract`
 
-260 µs ± 5, from the hub's pooled n = 61 over two runs. `start_us` already
-subtracts `RADIO_PRE_SYNC_US`, which is rate-derived, so this constant covers
-exactly one thing: **the hub's boundary to its beacon's first bit**. The hub now
-measures that directly as **358..366 µs over 529 beacons**, so the anchor here is
-about 100 µs late and every slot with it.
+260 µs ± 5 here, from the hub's pooled n = 61 over two runs. The hub measures
+its own boundary-to-first-bit directly as **358..366 µs over 529 beacons**.
 
-Small, and worth taking from the side that owns it rather than re-deriving. It
-still bundles this receiver's demod pipeline with the hub's transmit path, so a
-change to either side's PHY invalidates it and nothing in either tree checks
+**This is no longer "take the better number".** `start_us` already subtracts
+`RADIO_PRE_SYNC_US`, so what this constant covers is the hub's boundary-to-first
+-bit **plus this receiver's detect-to-timestamp residual**. The hub's figure is
+the first term alone. Mine must therefore be *larger* than the hub's, and it is
+100 µs smaller. A positive residual cannot subtract.
+
+So one of three things is wrong: the hub's 358..366, this side's 260, or the
+pre-sync subtraction over-correcting. Adopting the hub's number would move this
+anchor 100 µs and might land correctly for a false reason, which is worse than
+leaving it. **Neither number is to be written into the shared header until the
+discriminator below has run.**
+
+The pre-sync term is **not** the explanation: it is derived from
+`RADIO_US_PER_BYTE` on both sides — `RADIO_PRE_SYNC_US` here, `RADIO_PRE_SYNC_AIR_US`
+in the shared header — so it halved with the rate on both and is 1280 µs on each.
+Checked 2026-08-22.
+
+**The discriminator**: node B forges a beacon on its own boundary while node A
+reports the computed lag. Node B's boundary-to-first-bit is its own transmit
+path, measurable locally with `radio slot`, so the difference isolates this
+receiver's residual with nothing else in it. Same boot as `report opp 2`, so it
+does not become another two-window fraction. Hub side is item 31.
+
+It also bundles this receiver's demod pipeline with the hub's transmit path, so
+a change to either side's PHY invalidates it and nothing in either tree checks
 that it is still true.
 
 `radio_devices_docs/wl55_device/radio/timebase.md`.
+
+### 39. `RADIO_PRE_SYNC_US` is a second definition of a shared constant — `defect` `contract`
+
+`Core/Inc/radio.h:21` defines it with the same formula and the same inputs as
+`RADIO_PRE_SYNC_AIR_US` in `Common/inc/radio_phy.h`. Two names, one quantity, two
+files. They agree today only because the formula was transcribed, and **nothing
+anywhere checks that they still will** — the 45-vs-49 shape before it goes wrong.
+
+Delete the local one and use the shared macro. Prefer deleting the wrong value to
+testing for it: with one definition there is no second value to disagree.
+
+Found 2026-08-22 while answering the hub's question about item 12.
+
+`radio_devices_docs/wl55_device/radio/driver.md`.
 
 ### 13. The data beacon is unauthenticated — `contract`
 
