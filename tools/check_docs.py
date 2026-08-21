@@ -64,7 +64,10 @@ def source_text():
         roots.append("../OpenHub")
     blob = []
     for root in roots:
+        # --others: staging order must not decide what exists.
+        # radio_devices_docs/wl55_device/testing/host-tests.md
         files = subprocess.run(["git", "-C", root, "ls-files",
+                                "--cached", "--others", "--exclude-standard",
                                 "*.c", "*.h", "*.py", "*.sh", "*.txt", "*.ld",
                                 "CMakeLists.txt"],
                                capture_output=True, text=True).stdout.split()
