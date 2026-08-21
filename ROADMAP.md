@@ -515,8 +515,14 @@ where it was. That is the check, and it is only visible at the moment of a sweep
 of the 25 kbps era at unchanged rate, which is the one-sided test of the hub's
 preamble hypothesis in item 34. Side effect the hub must be told before it
 attributes frames: key-up is unchanged, so **the sync word moves 640 µs later
-inside the slot**, and the hub's own receive-side air-time arithmetic is correct
-only while this device stays at four bytes.
+inside the slot**.
+
+This item claimed the hub's receive-side arithmetic was correct only while this
+device stays at four bytes. **Checked on their side rather than accepted, and it
+is false**: their two consumers measure from the sync edge and subtract
+`RADIO_POST_SYNC_AIR_US`, which is the 42 bytes after the sync word and contains
+no preamble term. A sweep moves no hub figure. The announcement is still owed,
+for attribution rather than for arithmetic.
 
 `Core/Src/radio.c` → `radio_set_preamble`. `radio_devices_docs/radio/phy.md`,
 `radio_devices_docs/wl55_device/radio/driver.md`.
