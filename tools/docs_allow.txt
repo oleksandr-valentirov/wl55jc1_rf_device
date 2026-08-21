@@ -1,0 +1,25 @@
+# Names this side's documentation may use that the code does not define.
+# tools/check_docs.py reads this. Two rules, both earned on the first run:
+#
+# 1. An entry is page-relative-path:name, not a bare name. RADIO_PRE_SYNC_US is
+#    a correct historical quotation on radio/driver.md and was a stale claim in
+#    live arithmetic on radio/timebase.md on the same day. A name-keyed list
+#    cannot say that, and one line would have silenced the wrong occurrence.
+# 2. The reason after # is required, not conventional. An exemption without one
+#    is reported as a defect of this file, because a list that absorbs a real
+#    stale name is worse than no list.
+#
+# A bare name with no colon still exempts everywhere, for algebra and for terms
+# that are not identifiers anywhere.
+
+t_air     # algebra in the slot-budget derivations, not an identifier
+t_hub     # likewise
+t_latch   # likewise
+tx_seq    # likewise
+hub_ephemeral  # a term in the key-agreement formula, not a variable
+
+wl55_device/radio/driver.md:RADIO_PRE_SYNC_US  # named as the duplicate deleted in item 39
+wl55_device/radio/driver.md:radio_air_time_us  # the general verb, named as what was split
+wl55_device/radio/timebase.md:RADIO_FRAME_AIR_US  # named as a pre-rename name
+wl55_device/radio/timebase.md:RADIO_POST_SYNC_AIR_US  # likewise
+wl55_device/radio/timebase.md:RADIO_HUB_TX_DELAY_US  # named to say it does not exist yet
