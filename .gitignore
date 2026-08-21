@@ -1,0 +1,29 @@
+# Build output
+/build/
+*.elf
+*.map
+*.bin
+*.hex
+*.list
+
+# Cube FW is referenced, never vendored (ProjectManager.LibraryCopy=2)
+/Drivers/
+/Middlewares/
+
+# Editor and tooling
+.vscode/
+.idea/
+.settings/
+.cache/
+compile_commands.json
+.mxproject
+
+# Python tooling
+__pycache__/
+*.pyc
+.venv/
+
+# Host test binaries. The rule is the pattern, not one name: test_beacon was
+# listed alone and four others were tracked for weeks.
+test/test_*
+!test/test_*.c
