@@ -2027,7 +2027,15 @@ static uint32_t hub_us_to_local(uint32_t hub_us);
 
 /* What the next report echoes. The wire cannot tell its zero from cmd 0 seq 0. */
 static uint8_t  dl_ack_seq, dl_ack_cmd, dl_ack_arg, dl_any;
-static uint32_t dl_applied, dl_repeats;
+static uint32_t dl_applied, dl_repeats, dl_replays;
+
+/* A counter, not the hub's tuple: this slot field never varies.
+ * radio_devices_docs/wl55_device/security/replay.md */
+static uint32_t dl_floor;
+static uint8_t  dl_floor_known;
+/* Kept so the floor's control re-feeds a frame that really was accepted. */
+static uint8_t  last_dl[sizeof(radio_downlink_t)];
+static uint8_t  have_last_dl;
 
 static int downlink_open_with(const uint8_t *f, uint8_t len, uint8_t my_slot,
                               const uint8_t *key, uint32_t dev,
@@ -2344,9 +2352,38 @@ static int downlink_open_with(const uint8_t *f, uint8_t len, uint8_t my_slot,
     return 0;
 }
 
+/* The floor lives here and not in the caller: two call sites, one of them could forget.
+ * radio_devices_docs/wl55_device/security/replay.md */
 static int downlink_open(const uint8_t *f, uint8_t len, radio_downlink_cmd_t *cmd) {
-    return downlink_open_with(f, len, join_res.slot, join_res.session,
-                              join_res.dev_id_be, cmd);
+    uint32_t sf;
+    int rc = downlink_open_with(f, len, join_res.slot, join_res.session,
+                                join_res.dev_id_be, cmd);
+    if (rc != 0)
+        return rc;
+    sf = (uint32_t)f[3] | ((uint32_t)f[4] << 8) |
+         ((uint32_t)f[5] << 16) | ((uint32_t)f[6] << 24);
+    /* Only after the tag: refusing first moves this end's window on a forgery. */
+    if (dl_floor_known && (int32_t)(sf - dl_floor) <= 0) {
+        tlm_emit(TLM_RX_CMD, sf, cmd->cmd, cmd->cmd_seq, 3u);
+        memset(cmd, 0, sizeof(*cmd));
+        dl_replays++;
+        return -4;
+    }
+    dl_floor = sf;
+    dl_floor_known = 1;
+    memcpy(last_dl, f, sizeof(last_dl));
+    have_last_dl = 1;
+    return 0;
+}
+
+/* Read at boot, because a reset that forgets the floor reopens the window it closed.
+ * radio_devices_docs/wl55_device/security/replay.md */
+static void dl_floor_load(void) {
+    store_state_t st;
+    if (store_init(&st) != 0 || !st.valid || st.rx_floor == 0u)
+        return;
+    dl_floor = st.rx_floor;
+    dl_floor_known = 1;
 }
 
 /* An unknown cmd is acked, not refused: the ack says only that it arrived. */
@@ -2381,6 +2418,23 @@ static int cmd_downlink(int argc, char **argv) {
     uint8_t rx[64];
     radio_rx_info_t info = {0};
     uint8_t hop, grid;
+
+    /* Accepted bytes, refused now: only the floor can be the reason.
+     * radio_devices_docs/wl55_device/security/replay.md */
+    if (argc >= 2 && strcmp(argv[1], "replay") == 0) {
+        radio_downlink_cmd_t cmd;
+        int rc;
+        if (!have_last_dl) {
+            out("nothing to replay - accept one downlink first\r\n");
+            return 0;
+        }
+        rc = downlink_open(last_dl, (uint8_t)sizeof(last_dl), &cmd);
+        out("replayed the frame accepted at %lu: %s (%d)\r\n",
+            (unsigned long)dl_floor, (rc == -4) ? "refused" : "ACCEPTED - no floor",
+            rc);
+        return 0;
+    }
+
     int wide = (argc >= 2 && strcmp(argv[1], "wide") == 0);
     uint32_t frames = (argc >= (wide ? 3 : 2))
                           ? (uint32_t)strtoul(argv[wide ? 2 : 1], NULL, 10) : 4u;
@@ -2489,6 +2543,9 @@ static int cmd_downlink(int argc, char **argv) {
                     rx[2], (unsigned)join_res.slot);
             else if (orc == -3)
                 out("  TAG FAILED - wrong key, slot or superframe\r\n");
+            else if (orc == -4)
+                out("  REPLAY - a valid tag at or below the floor %lu\r\n",
+                    (unsigned long)dl_floor);
             else
                 out("  not a downlink frame: type %02X version %02X len %u\r\n",
                     rx[0], info.len > 1u ? rx[1] : 0u, info.len);
@@ -2501,6 +2558,11 @@ static int cmd_downlink(int argc, char **argv) {
                 (unsigned long)info.timeout_us);
         }
     }
+    /* Counted since boot by both paths, and until now by neither reader. */
+    out("downlink: %lu applied, %lu repeats, %lu replays, floor %s%lu\r\n",
+        (unsigned long)dl_applied, (unsigned long)dl_repeats,
+        (unsigned long)dl_replays, dl_floor_known ? "" : "unset ",
+        (unsigned long)dl_floor);
     return 0;
 }
 
@@ -2905,6 +2967,9 @@ void report_service(void) {
     /* The gap, not the slot. A denied cycle reaches it too, and only it clears one. */
     if (!reserve_known || (int32_t)(sf + RESERVE_TOPUP_AHEAD - reserve_ceiling) >= 0)
         reserve_extend(sf);
+    /* Same gap, same reason: a flash append inside a slot would miss the slot. */
+    if (dl_floor_known)
+        (void)store_note_received(dl_floor);
     /* The flag is the retry: a refused write stays owed to the next cycle. */
     if (rate_unsaved && store_save_report_every(join_res.report_every) == 0)
         rate_unsaved = 0u;
@@ -3065,7 +3130,7 @@ static const cli_cmd_t commands[] = {
     {"time",   0, 3, cmd_time,   "[beacon|quiesce|camp|joinsync|follow|capture [n]]", "the protocol's clock"},
     {"store",  0, 2, cmd_store,  "[new|counter|torn|selftest|erase]", "flash identity and counter mark"},
     {"pair",   1, 3, cmd_pair,   "<keygen|salt|show|hub|device>", "P-256 pairing over the air"},
-    {"downlink", 0, 3, cmd_downlink, "[wide] [n]", "listen in the downlink region"},
+    {"downlink", 0, 3, cmd_downlink, "[replay|[wide] [n]]", "listen in the downlink region"},
     {"uplink", 0, 2, cmd_uplink, "[selftest [mutate]|replay|again]", "one report in the granted slot"},
     {"hop",    0, 4, cmd_hop,    "[vec|id <sf> <ch>|<sf>]", "the hopping channel plan"},
     {"load",   0, 1, cmd_load,   "[reset]",           "where the CPU's time goes"},
@@ -3124,6 +3189,7 @@ void CLI_Init(void) {
     /* The grant lives in flash: a reset must not silently demote a paired device.
      * radio_devices_docs/wl55_device/arch/store.md */
     join_restore(&join_res);
+    dl_floor_load();
     __HAL_UART_ENABLE_IT(&hcom_uart[COM1], UART_IT_RXNE);
     HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(LPUART1_IRQn);

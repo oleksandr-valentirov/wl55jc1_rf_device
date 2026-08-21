@@ -39,7 +39,7 @@ typedef enum {
 #define TLM_WHY_OFFBEAT   7u   /* the aligned counter is not a reporting one */
 #define TLM_WHY_RESERVE   8u   /* the counter is outside the reserved window */
 
-/* rx.cmd `rpt`: 0 applied, 1 a repeat of the one held, 2 a keepalive. */
+/* rx.cmd `rpt`: 0 applied, 1 a repeat of the one held, 2 a keepalive, 3 a replay. */
 
 /** @brief Rings a record: a timestamp, a sequence number and four words. */
 void tlm_emit(tlm_kind_t kind, uint32_t a, uint32_t b, uint32_t c, uint32_t d);
