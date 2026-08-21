@@ -1,0 +1,177 @@
+/* SHA-256, HMAC and HKDF in software.
+ *
+ * The WL55 has no HASH peripheral - the hub has one and no PKA, this part is
+ * the mirror image - so the hash side of the wire format is code here rather
+ * than silicon. FIPS 180-4 and RFC 5869; nothing clever, because the only thing
+ * that matters is that it produces the bytes the specification says. */
+#include <string.h>
+
+#include "sha256.h"
+#include "load.h"
+
+static const uint32_t K[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+};
+
+#define ROR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
+
+static void compress_inner(sha256_ctx_t *c, const uint8_t *block) {
+    uint32_t w[64];
+    for (int i = 0; i < 16; i++)
+        w[i] = ((uint32_t)block[4 * i] << 24) | ((uint32_t)block[4 * i + 1] << 16) |
+               ((uint32_t)block[4 * i + 2] << 8) | (uint32_t)block[4 * i + 3];
+    for (int i = 16; i < 64; i++) {
+        uint32_t s0 = ROR(w[i - 15], 7) ^ ROR(w[i - 15], 18) ^ (w[i - 15] >> 3);
+        uint32_t s1 = ROR(w[i - 2], 17) ^ ROR(w[i - 2], 19) ^ (w[i - 2] >> 10);
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+    }
+
+    uint32_t a = c->h[0], b = c->h[1], cc = c->h[2], d = c->h[3];
+    uint32_t e = c->h[4], f = c->h[5], g = c->h[6], h = c->h[7];
+    for (int i = 0; i < 64; i++) {
+        uint32_t s1 = ROR(e, 6) ^ ROR(e, 11) ^ ROR(e, 25);
+        uint32_t ch = (e & f) ^ (~e & g);
+        uint32_t t1 = h + s1 + ch + K[i] + w[i];
+        uint32_t s0 = ROR(a, 2) ^ ROR(a, 13) ^ ROR(a, 22);
+        uint32_t maj = (a & b) ^ (a & cc) ^ (b & cc);
+        uint32_t t2 = s0 + maj;
+        h = g; g = f; f = e; e = d + t1;
+        d = cc; cc = b; b = a; a = t1 + t2;
+    }
+    c->h[0] += a; c->h[1] += b; c->h[2] += cc; c->h[3] += d;
+    c->h[4] += e; c->h[5] += f; c->h[6] += g; c->h[7] += h;
+}
+
+/* Charged at the compression function: this is the whole of SHA-256's cost, and
+ * it is software on this part - there is no HASH peripheral to hand it to. */
+static void compress(sha256_ctx_t *c, const uint8_t *block) {
+    load_enter(LOAD_CRYPTO);
+    compress_inner(c, block);
+    load_exit();
+}
+
+void sha256_init(sha256_ctx_t *c) {
+    c->h[0] = 0x6a09e667; c->h[1] = 0xbb67ae85;
+    c->h[2] = 0x3c6ef372; c->h[3] = 0xa54ff53a;
+    c->h[4] = 0x510e527f; c->h[5] = 0x9b05688c;
+    c->h[6] = 0x1f83d9ab; c->h[7] = 0x5be0cd19;
+    c->len = 0;
+    c->fill = 0;
+}
+
+void sha256_update(sha256_ctx_t *c, const uint8_t *data, uint32_t len) {
+    c->len += len;
+    while (len > 0) {
+        uint32_t take = 64u - c->fill;
+        if (take > len)
+            take = len;
+        memcpy(c->buf + c->fill, data, take);
+        c->fill += take;
+        data += take;
+        len -= take;
+        if (c->fill == 64u) {
+            compress(c, c->buf);
+            c->fill = 0;
+        }
+    }
+}
+
+void sha256_final(sha256_ctx_t *c, uint8_t *out) {
+    uint64_t bits = (uint64_t)c->len * 8u;
+    uint8_t pad = 0x80;
+    sha256_update(c, &pad, 1);
+    pad = 0x00;
+    while (c->fill != 56u)
+        sha256_update(c, &pad, 1);
+    /* The length is appended raw: going through update would count it. */
+    for (int i = 7; i >= 0; i--)
+        c->buf[56 + (7 - i)] = (uint8_t)(bits >> (i * 8));
+    compress(c, c->buf);
+    for (int i = 0; i < 8; i++) {
+        out[4 * i]     = (uint8_t)(c->h[i] >> 24);
+        out[4 * i + 1] = (uint8_t)(c->h[i] >> 16);
+        out[4 * i + 2] = (uint8_t)(c->h[i] >> 8);
+        out[4 * i + 3] = (uint8_t)c->h[i];
+    }
+}
+
+void sha256(const uint8_t *data, uint32_t len, uint8_t *out) {
+    sha256_ctx_t c;
+    sha256_init(&c);
+    sha256_update(&c, data, len);
+    sha256_final(&c, out);
+}
+
+void hmac_sha256(const uint8_t *key, uint32_t key_len,
+                 const uint8_t *msg, uint32_t msg_len, uint8_t *out) {
+    uint8_t k[64] = {0};
+    uint8_t pad[64];
+    uint8_t inner[SHA256_LEN];
+    sha256_ctx_t c;
+
+    if (key_len > 64u)
+        sha256(key, key_len, k);
+    else
+        memcpy(k, key, key_len);
+
+    for (int i = 0; i < 64; i++)
+        pad[i] = (uint8_t)(k[i] ^ 0x36);
+    sha256_init(&c);
+    sha256_update(&c, pad, sizeof(pad));
+    sha256_update(&c, msg, msg_len);
+    sha256_final(&c, inner);
+
+    for (int i = 0; i < 64; i++)
+        pad[i] = (uint8_t)(k[i] ^ 0x5c);
+    sha256_init(&c);
+    sha256_update(&c, pad, sizeof(pad));
+    sha256_update(&c, inner, sizeof(inner));
+    sha256_final(&c, out);
+}
+
+void hkdf_sha256(const uint8_t *salt, uint32_t salt_len,
+                 const uint8_t *ikm, uint32_t ikm_len,
+                 const uint8_t *info, uint32_t info_len,
+                 uint8_t *out, uint32_t out_len) {
+    uint8_t prk[SHA256_LEN];
+    uint8_t t[SHA256_LEN];
+    uint32_t done = 0;
+    uint8_t counter = 1;
+    uint32_t t_len = 0;
+
+    hmac_sha256(salt, salt_len, ikm, ikm_len, prk);
+
+    /* T(n-1) || info || counter has to fit; the wire format's info strings are
+     * under twenty bytes, but a silent overrun here would be a bad way to
+     * discover that someone added a longer one. */
+    if (info_len > HKDF_MAX_INFO)
+        return;
+
+    while (done < out_len) {
+        uint8_t block[SHA256_LEN + HKDF_MAX_INFO + 1];
+        uint32_t n = 0;
+        memcpy(block, t, t_len);
+        n += t_len;
+        memcpy(block + n, info, info_len);
+        n += info_len;
+        block[n++] = counter++;
+        hmac_sha256(prk, sizeof(prk), block, n, t);
+        t_len = SHA256_LEN;
+
+        uint32_t take = out_len - done;
+        if (take > SHA256_LEN)
+            take = SHA256_LEN;
+        memcpy(out + done, t, take);
+        done += take;
+    }
+}
