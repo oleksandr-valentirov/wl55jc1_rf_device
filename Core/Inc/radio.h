@@ -53,8 +53,13 @@ const char *radio_crc_name(void);
 /** @brief Reads back what was staged for transmission. */
 int  radio_read_tx_buffer(uint8_t *out, uint8_t len);
 
-/** @brief Air time for a payload at the configured preamble and rate. */
-uint32_t radio_air_time_us(uint8_t payload_len);
+/** @brief Air time for a payload this device transmits, at its live preamble.
+ *  radio_devices_docs/radio/phy.md */
+uint32_t radio_tx_air_time_us(uint8_t payload_len);
+
+/** @brief Air time for a payload this device receives, at the peer's fixed preamble.
+ *  radio_devices_docs/radio/phy.md */
+uint32_t radio_rx_air_time_us(uint8_t payload_len);
 
 /** @brief Picks which edge DIO1 carries; only a sync word is a frame start.
  *  radio_devices_docs/wl55_device/radio/timebase.md */

@@ -204,8 +204,14 @@ static uint32_t air_time_us(uint8_t preamble_b, uint8_t payload_len) {
     return bytes * 8u * 1000000u / RADIO_BITRATE_BPS;
 }
 
-uint32_t radio_air_time_us(uint8_t payload_len) {
+uint32_t radio_tx_air_time_us(uint8_t payload_len) {
     return air_time_us((uint8_t)(preamble_bits / 8u), payload_len);
+}
+
+/* The preamble on a received frame is the sender's, and only this side's is settable.
+ * radio_devices_docs/radio/phy.md */
+uint32_t radio_rx_air_time_us(uint8_t payload_len) {
+    return RADIO_FRAME_AIR_US(payload_len);
 }
 
 /* The register range is not the limit: the slot is.
@@ -560,11 +566,11 @@ static int receive_from(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info
     if (cmd_get(RADIO_GET_PACKETSTATUS, ps, sizeof(ps)) == 0)
         info->rssi_dbm = -(int16_t)(ps[2] / 2);   /* RssiAvg, in half-dB steps */
     info->len = len;
-    /* A preamble edge is not a frame start: it lands after the preamble.
+    /* A preamble edge is not a frame start, and the preamble is the sender's.
      * radio_devices_docs/wl55_device/radio/timebase.md */
     info->start_us = (info->capture_valid && info->capture_sync)
                    ? info->capture_us - RADIO_PRE_SYNC_AIR_US
-                   : info->done_us - RADIO_FRAME_AIR_US(len);
+                   : info->done_us - radio_rx_air_time_us(len);
     clear_irq(0xFFFFu);
     return 0;
 }

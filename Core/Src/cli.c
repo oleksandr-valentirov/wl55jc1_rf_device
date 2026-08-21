@@ -156,7 +156,11 @@ static int cmd_radio(int argc, char **argv) {
             out("usage: radio preamble <2..32>\r\n");
             return 0;
         }
-        out("preamble %u bytes\r\n", (unsigned)radio_preamble_bytes());
+        /* Both directions: only the transmit one may move with this command. */
+        out("preamble %u bytes: tx air %lu us, rx air %lu us\r\n",
+            (unsigned)radio_preamble_bytes(),
+            (unsigned long)radio_tx_air_time_us(RADIO_UPLINK_BYTES),
+            (unsigned long)radio_rx_air_time_us(RADIO_UPLINK_BYTES));
         return 0;
     }
     /* Moves transmit and receive together. radio_devices_docs/radio/phy.md */
@@ -2269,7 +2273,7 @@ static int cmd_uplink(int argc, char **argv) {
     int rc = radio_send(f, sizeof(f), &air);
     /* `air` is SetTx to TxDone, so subtracting the frame measures this ramp.
      * radio_devices_docs/wl55_device/testing/console.md */
-    uint32_t on_air_us = radio_air_time_us((uint8_t)sizeof(f));
+    uint32_t on_air_us = radio_tx_air_time_us((uint8_t)sizeof(f));
     uint32_t ramp = (air > on_air_us) ? (air - on_air_us) : 0u;
     /* Signed, both instants: early is as wrong as late, and the grid wants the first bit.
      * radio_devices_docs/wl55_device/testing/console.md */
@@ -2288,8 +2292,10 @@ static int cmd_uplink(int argc, char **argv) {
         replay ? "REPLAYED " : "",
         (unsigned)sizeof(f), (unsigned)join_res.slot, (unsigned long)sf,
         (unsigned)grid, (unsigned long)radio_slot_hz(grid));
-    out("keyed %lu us = %lu air + %lu ramp (measured)\r\n",
-        (unsigned long)air, (unsigned long)on_air_us, (unsigned long)ramp);
+    /* The preamble is the air term's denominator and nothing else logs it. */
+    out("keyed %lu us = %lu air + %lu ramp (measured) at %u B preamble\r\n",
+        (unsigned long)air, (unsigned long)on_air_us, (unsigned long)ramp,
+        (unsigned)radio_preamble_bytes());
     out("SetTx %+ld us from the slot boundary, first bit %+ld us\r\n",
         (long)set_err, (long)first_bit);
     /* All the slack is late: air 17600 + guard 1400, early none. On slot 0 early is downlink.
@@ -2304,9 +2310,10 @@ static int cmd_uplink(int argc, char **argv) {
         out("same sealed bytes as superframe %lu - a valid tag the hub has "
             "already accepted\r\n", (unsigned long)last_sf);
     else
-        out("report: rssi_down %d dBm  flags %02X  supply %u mV  uptime %lu s\r\n",
+        out("report: rssi_down %d dBm  flags %02X  supply %u mV  uptime %lu s"
+            "  ack %u/%u arg %u\r\n",
             (int)rep.rssi_down, rep.flags, rep.supply_mv,
-            (unsigned long)rep.uptime_s);
+            (unsigned long)rep.uptime_s, rep.ack_cmd, rep.ack_seq, rep.ack_arg);
     return 0;
 }
 
@@ -2429,7 +2436,7 @@ static int cmd_downlink(int argc, char **argv) {
                 if (radio_receive(rx, sizeof(rx), &info) != 0)
                     break;
                 uint32_t at = micros() - boundary
-                              - radio_air_time_us((uint8_t)info.len);
+                              - radio_rx_air_time_us((uint8_t)info.len);
                 out("  +%lu us: %u bytes type %02X rssi %d dBm\r\n",
                     (unsigned long)at, info.len, info.len ? rx[0] : 0u,
                     info.rssi_dbm);
@@ -2888,7 +2895,7 @@ void report_service(void) {
             continue;
         }
         /* The same arithmetic cmd_uplink prints, for one population. */
-        uint32_t on_air = radio_air_time_us((uint8_t)sizeof(f));
+        uint32_t on_air = radio_tx_air_time_us((uint8_t)sizeof(f));
         uint32_t ramp = (air > on_air) ? (air - on_air) : 0u;
         int32_t  off = (int32_t)(micros() - air - slot_at) + (int32_t)ramp;
 
