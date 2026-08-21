@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Checks the comment conventions from CLAUDE.md; see that file for the rules."""
-import os, re, subprocess, sys
+import io, os, re, subprocess, sys, tokenize
 
 # CubeMX and vendor files: regeneration overwrites them, so the rules cannot hold there.
 GENERATED = re.compile(
@@ -42,8 +42,32 @@ def kind(path):
         return "#"
     return PREFIX.get(os.path.splitext(path)[1])
 
+def hash_comment_lines(text):
+    """Line numbers holding a real # comment. A # inside a string is not one."""
+    try:
+        toks = tokenize.generate_tokens(io.StringIO(text).readline)
+        return {t.start[0] for t in toks if t.type == tokenize.COMMENT}
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return None
+
+def handwritten(text):
+    """Line numbers a human owns. In a CubeMX file that is the USER CODE regions only."""
+    lines = text.split("\n")
+    if "USER CODE BEGIN" not in text:
+        return None
+    own, inside = set(), False
+    for n, l in enumerate(lines, 1):
+        if "USER CODE BEGIN" in l:
+            # A "Header" region holds the banner CubeMX writes and rewrites.
+            inside = "USER CODE BEGIN Header" not in l
+        elif "USER CODE END" in l:
+            inside = False
+        elif inside:
+            own.add(n)
+    return own
+
 def check(files, only=None):
-    long_blocks, own_line, cyrillic = [], [], []
+    long_blocks, own_line, cyrillic, long_brief = [], [], [], []
     for p in files:
         if GENERATED.search(p) or GENERATED_VEC.search(p) or not os.path.isfile(p):
             continue
@@ -56,11 +80,27 @@ def check(files, only=None):
             continue
         if p != "CLAUDE.md" and re.search("[\u0400-\u04ff]", text):
             cyrillic.append(p)
-        run, start = [], 0
+        mine = handwritten(text)
+        # Shell and CMake are not tokenizable; only Python gets the string check.
+        hashes = hash_comment_lines(text) if p.endswith(".py") else None
+        run, start, incomment = [], 0, False
         for n, line in enumerate(text.split("\n") + [""], 1):
             st = line.strip()
-            iscomment = st.startswith(pfx) or (pfx == "//" and
-                                               (st.startswith("/*") or st.startswith("*")))
+            # A USER CODE marker is structure, not a comment: it must not open a block.
+            marker = "USER CODE BEGIN" in st or "USER CODE END" in st
+            iscomment = not marker and (st.startswith(pfx) or (pfx == "//" and
+                                        (st.startswith("/*") or st.startswith("*"))))
+            # A /* */ body counts to its close, or a continuation dodges the limit
+            # by not opening with a star.
+            if pfx == "//":
+                if incomment:
+                    iscomment = True
+                if iscomment and "/*" in st and "*/" not in st.split("/*", 1)[1]:
+                    incomment = True
+                elif incomment and "*/" in st:
+                    incomment = False
+            if iscomment and hashes is not None and n not in hashes:
+                iscomment = False
             if iscomment:
                 if not run:
                     start = n
@@ -68,10 +108,18 @@ def check(files, only=None):
                 continue
             # A documentation path is exempt: CLAUDE.md allows it in full.
             body = re.sub(r"radio_devices_docs/[A-Za-z0-9_./-]+", "", " ".join(run))
-            if run and len(body) > 100:
-                span = set(range(start, n))
-                if only is None or only.get(p) is None or (span & only[p]):
-                    long_blocks.append("%s:%d (%d chars)" % (p, start, len(body)))
+            span = set(range(start, n))
+            mineok = run and (mine is None or start in mine)
+            onlyok = only is None or only.get(p) is None or (span & only[p])
+            # A Doxygen block's limit is per @brief, not per block.
+            if mineok and run[0].startswith("/**") and not run[0].startswith("/**<"):
+                for off, line in enumerate(run):
+                    m = re.search(r"@brief\s+(.*)", line)
+                    if m and len(m.group(1).rstrip("*/ ")) > 100 and onlyok:
+                        long_brief.append("%s:%d (%d chars)"
+                                          % (p, start + off, len(m.group(1).rstrip("*/ "))))
+            elif mineok and len(body) > 100 and onlyok:
+                long_blocks.append("%s:%d (%d chars)" % (p, start, len(body)))
             run = []
         if p.endswith((".c", ".h")):
             inside = 0
@@ -81,24 +129,27 @@ def check(files, only=None):
                 elif inside and re.match(r"\s*\}", l):
                     inside = 0
                 elif inside and re.match(r"\s*(/\*|//|\*)", l):
+                    if mine is not None and n not in mine:
+                        continue
                     if only is None or only.get(p) is None or n in only[p]:
                         own_line.append("%s:%d" % (p, n))
-    return long_blocks, own_line, cyrillic
+    return long_blocks, own_line, cyrillic, long_brief
 
 def main():
     changed = "--changed" in sys.argv
     files = tracked(changed)
-    longb, own, cyr = check(files, touched_lines() if changed else None)
+    longb, own, cyr, brief = check(files, touched_lines() if changed else None)
     scope = "lines changed against HEAD" if changed else "all tracked files"
     print("scope: %s (%d), generated and vendored excluded\n" % (scope, len(files)))
     for title, items in (("non-English outside CLAUDE.md", cyr),
                          ("comment blocks over 100 characters", longb),
-                         ("struct-field comments on their own line", own)):
+                         ("struct-field comments on their own line", own),
+                         ("Doxygen @brief over 100 characters", brief)):
         print("== %s: %d ==" % (title, len(items)))
         for i in items[:15]:
             print("   " + i)
         if len(items) > 15:
             print("   ... and %d more" % (len(items) - 15))
-    return 1 if (longb or own or cyr) else 0
+    return 1 if (longb or own or cyr or brief) else 0
 
 sys.exit(main())
