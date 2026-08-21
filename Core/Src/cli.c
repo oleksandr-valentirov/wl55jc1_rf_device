@@ -2010,14 +2010,19 @@ static int cmd_load(int argc, char **argv) {
 }
 
 #include "pair_v2.h"   /* the published uplink frame, for the assembly check */
-#include "link_v4.h"   /* both data frames at 39 bytes, and the only downlink vector */
+#include "link_v5.h"   /* both data frames at 39 bytes, and the only downlink vector */
+
+/* A size assert answers "same shape", never "same contract": v4 built clean on v5.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
+_Static_assert(LINK_VECTORS_VERSION == RADIO_LINK_VERSION,
+               "the link vectors are not the wire this build speaks");
 
 /* The grid is in hub microseconds; this clock is fast and lands early.
  * radio_devices_docs/wl55_device/radio/timebase.md */
 static uint32_t hub_us_to_local(uint32_t hub_us);
 
 /* What the next report echoes. The wire cannot tell its zero from cmd 0 seq 0. */
-static uint8_t  dl_ack_seq, dl_ack_cmd, dl_any;
+static uint8_t  dl_ack_seq, dl_ack_cmd, dl_ack_arg, dl_any;
 static uint32_t dl_applied, dl_repeats;
 
 static int downlink_open_with(const uint8_t *f, uint8_t len, uint8_t my_slot,
@@ -2112,8 +2117,8 @@ static int cmd_uplink(int argc, char **argv) {
         strcmp(argv[2], "mutate") == 0) {
         uint8_t v[sizeof(radio_uplink_t)];
         uint8_t d[sizeof(radio_downlink_t)];
-        radio_uplink_report_t vr = { -92, 0x01, 3287, 61, 0x5b, 0x01, 0x05,
-                                     {0xa1, 0xb2, 0xc3, 0xd4, 0xe5} };
+        radio_uplink_report_t vr = { -92, 0x05, 3287, 61, 0x5b, 0x01, 0x1f, 0x04,
+                                     {0xa1, 0xb2, 0xc3, 0xd4} };
         radio_downlink_cmd_t dc;
         int slot_seen, hdr_seen;
 
@@ -2136,8 +2141,8 @@ static int cmd_uplink(int argc, char **argv) {
     if (argc >= 2 && strcmp(argv[1], "selftest") == 0) {
         uint8_t v[sizeof(radio_uplink_t)];
         uint8_t d[sizeof(radio_downlink_t)];
-        radio_uplink_report_t vr = { -92, 0x01, 3287, 61, 0x5b, 0x01, 0x05,
-                                     {0xa1, 0xb2, 0xc3, 0xd4, 0xe5} };
+        radio_uplink_report_t vr = { -92, 0x05, 3287, 61, 0x5b, 0x01, 0x1f, 0x04,
+                                     {0xa1, 0xb2, 0xc3, 0xd4} };
         radio_downlink_cmd_t dc;
         int up, down;
 
@@ -2149,7 +2154,7 @@ static int cmd_uplink(int argc, char **argv) {
                                   0x0000002au, &dc) == 0 &&
                memcmp(&dc, LV_DOWNLINK_PLAIN, sizeof(dc)) == 0;
 
-        out("link_v4 %s\r\n", LINK_VECTORS_DIGEST);
+        out("link_v%u %s\r\n", LINK_VECTORS_VERSION, LINK_VECTORS_DIGEST);
         out("uplink assembly vs LV_FRAME_UPLINK:  %s\r\n", up ? "ok" : "FAIL");
         out("downlink open vs LV_FRAME_DOWNLINK:  %s\r\n", down ? "ok" : "FAIL");
         out("covers type, version, slot 66, superframe, nonce, AAD, 16-byte body\r\n");
@@ -2225,11 +2230,14 @@ static int cmd_uplink(int argc, char **argv) {
     rep.rssi_down = beacon_rssi_valid ? beacon_rssi_dbm : 0;
     /* Flagged rather than replaced: a sentinel cannot be told from a real -0 dBm.
      * radio_devices_docs/wl55_device/testing/console.md */
-    rep.flags     = beacon_rssi_valid ? 0u : RADIO_REPORT_FLAG_RSSI_STALE;
+    rep.flags     = RADIO_REPORT_FLAG_SUPPLY_STALE;
+    if (!beacon_rssi_valid)
+        rep.flags |= RADIO_REPORT_FLAG_RSSI_STALE;
     rep.supply_mv = 0;              /* no ADC on this build; 0 is not a reading */
     rep.uptime_s  = timebase_uptime_s();
     rep.ack_seq   = dl_ack_seq;
     rep.ack_cmd   = dl_ack_cmd;
+    rep.ack_arg   = dl_ack_arg;
 
     /* An unreserved counter is nonce reuse after the next reboot. */
     if (!replay && !tx_gate(sf))
@@ -2352,6 +2360,8 @@ static void downlink_apply(uint32_t sf, const radio_downlink_cmd_t *cmd) {
     }
     dl_ack_seq = cmd->cmd_seq;
     dl_ack_cmd = cmd->cmd;
+    /* What was applied, not what was asked: only SET_RATE carries an argument. */
+    dl_ack_arg = (cmd->cmd == RADIO_CMD_SET_RATE) ? join_res.report_every : 0u;
     dl_any     = 1u;
     dl_applied++;
     tlm_emit(TLM_RX_CMD, sf, cmd->cmd, cmd->cmd_seq, 0u);
@@ -2465,8 +2475,8 @@ static int cmd_downlink(int argc, char **argv) {
                 out("  opened: cmd %u%s  report_every %u  arg %u  hub_time %lu s\r\n",
                     cmd.cmd, cmd.cmd > RADIO_CMD_REJOIN ? " (unknown, ignored)" : "",
                     cmd.report_every, cmd.arg, (unsigned long)cmd.hub_time_s);
-                out("  seq %u  app_len %u  -> ack %u/%u\r\n", cmd.cmd_seq,
-                    cmd.app_len, dl_ack_cmd, dl_ack_seq);
+                out("  seq %u  app_len %u  -> ack %u/%u arg %u\r\n", cmd.cmd_seq,
+                    cmd.app_len, dl_ack_cmd, dl_ack_seq, dl_ack_arg);
             } else if (orc == -2)
                 out("  addressed to slot %u, not mine (%u)\r\n",
                     rx[2], (unsigned)join_res.slot);
@@ -2833,11 +2843,15 @@ void report_service(void) {
 
     memset(&rep, 0, sizeof(rep));
     rep.rssi_down = beacon_rssi_valid ? beacon_rssi_dbm : 0;
-    rep.flags     = beacon_rssi_valid ? 0u : RADIO_REPORT_FLAG_RSSI_STALE;
+    /* Unconditional while no ADC exists: the wire never claims an unmade reading. */
+    rep.flags     = RADIO_REPORT_FLAG_SUPPLY_STALE;
+    if (!beacon_rssi_valid)
+        rep.flags |= RADIO_REPORT_FLAG_RSSI_STALE;
     rep.supply_mv = 0;
     rep.uptime_s  = timebase_uptime_s();
     rep.ack_seq   = dl_ack_seq;
     rep.ack_cmd   = dl_ack_cmd;
+    rep.ack_arg   = dl_ack_arg;
 
     /* Unreserved is nonce reuse after a reboot. A refusal that skips the
      * top-up denies for ever. */
