@@ -771,7 +771,7 @@ static int cmd_time(int argc, char **argv) {
         if (info.capture_valid && info.capture_sync)
             out("frame start: RxDone-derived %+ld us against the sync ISR\r\n",
                 (long)(int32_t)((info.done_us - RADIO_FRAME_AIR_US(info.len)) -
-                                (info.capture_us - RADIO_PRE_SYNC_US)));
+                                (info.capture_us - RADIO_PRE_SYNC_AIR_US)));
         else if (info.capture_valid)
             out("frame start: capture is the preamble edge, not a frame start\r\n");
         else

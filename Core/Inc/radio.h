@@ -16,10 +16,6 @@ typedef struct {
     uint32_t start_us;     /* the frame's first bit, from sync when there is one */
 } radio_rx_info_t;
 
-/* Bytes on air before the length field, so a sync-word timestamp converts to a
- * frame start. radio_devices_docs/wl55_device/radio/timebase.md */
-#define RADIO_PRE_SYNC_US  ((RADIO_PREAMBLE_BYTES + RADIO_SYNC_BYTES) * RADIO_US_PER_BYTE)
-
 /** @brief Reads the chip's status byte. */
 int radio_get_status(uint8_t *status);
 

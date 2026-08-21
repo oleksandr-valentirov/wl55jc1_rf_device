@@ -563,7 +563,7 @@ static int receive_from(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info
     /* A preamble edge is not a frame start: it lands after the preamble.
      * radio_devices_docs/wl55_device/radio/timebase.md */
     info->start_us = (info->capture_valid && info->capture_sync)
-                   ? info->capture_us - RADIO_PRE_SYNC_US
+                   ? info->capture_us - RADIO_PRE_SYNC_AIR_US
                    : info->done_us - RADIO_FRAME_AIR_US(len);
     clear_irq(0xFFFFu);
     return 0;
