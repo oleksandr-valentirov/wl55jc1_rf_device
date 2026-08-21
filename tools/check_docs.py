@@ -28,7 +28,9 @@ IDENT = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\)|\(|`)")
 # radio_devices_docs/wl55_device/radio/timebase.md
 CODE = re.compile(r"```.*?```|`[^`\n]+`", re.S)
 # Lowercase calls in fences only: device_id(4) inline is a width, not a call.
-FENCE = re.compile(r"```.*?```", re.S)
+FENCE = re.compile(r"```([a-z]*)\n(.*?)```", re.S)
+# A shell fence is not C, so a C symbol rule does not apply to what is in it.
+NOT_C = ("bash", "sh", "console", "text", "json")
 MACRO = re.compile(r"`(RADIO_[A-Z0-9_]+|STORE_[A-Z0-9_]+|BEACON_[A-Z0-9_]+"
                    r"|SUPERFRAME_[A-Z0-9_]+|TLM_[A-Z0-9_]+)`")
 # Only a path is a claim about where something lives; a bare file name is prose.
@@ -111,7 +113,9 @@ def main():
                     missing_ident.append("%s: %s" % (rel, name))
 
         for span in FENCE.finditer(text):
-            for name in re.findall(r"\b([a-z_][a-z0-9_]{3,})\s*\(", span.group(0)):
+            if span.group(1) in NOT_C:
+                continue
+            for name in re.findall(r"\b([a-z_][a-z0-9_]{3,})\s*\(", span.group(2)):
                 if "_" not in name or name.startswith(FOREIGN):
                     continue
                 if name not in words and not allowed(name):
