@@ -9,9 +9,8 @@ import textwrap
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# GCM test case 4 from McGrew & Viega, reproduced in the NIST GCM specification.
-# Chosen because it is the one with associated data and a payload that is not a
-# whole number of blocks - which is what the frame format actually looks like.
+# GCM case 4: the one with AAD and a payload that is not a whole number of blocks.
+# radio_devices_docs/wl55_device/testing/host-tests.md
 GCM_KEY = bytes.fromhex("feffe9928665731c6d6a8f9467308308")
 GCM_IV = bytes.fromhex("cafebabefacedbaddecaf888")
 GCM_AAD = bytes.fromhex("feedfacedeadbeeffeedfacedeadbeefabaddad2")
@@ -23,20 +22,19 @@ GCM_CT = bytes.fromhex(
     "21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091")
 GCM_TAG = bytes.fromhex("5bc94fbc3221a5db94fae95ae7121a47")
 
-# A fixed P-256 scalar. Nothing special about the value; it only has to be
-# constant so the target and the host compute the same point.
+# A fixed P-256 scalar: it only has to be constant across target and host.
+# radio_devices_docs/wl55_device/testing/host-tests.md
 P256_D = 0x519b423d715f8b581f4fa8ee59f4771a5b44c8130b4e3eacca54a56dda72b464
 
-# NIST P-256 domain parameters. The PKA needs them as big-endian byte arrays,
-# which is the same encoding SEC1 uses, so nothing is reordered on the way in.
+# NIST P-256 parameters, big-endian as both the PKA and SEC1 want them.
+# radio_devices_docs/wl55_device/testing/host-tests.md
 P256_P = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff
 P256_B = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b
 P256_GX = 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296
 P256_GY = 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5
 P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551
-# p = 3 mod 4, so a square root is one exponentiation rather than a general
-# Tonelli-Shanks: y = +/- t^((p+1)/4) mod p. This is what makes point
-# decompression affordable enough to argue about.
+# p = 3 mod 4: y = +/- t^((p+1)/4) mod p, one exponentiation, not Tonelli-Shanks.
+# radio_devices_docs/wl55_device/security/self-tests.md
 P256_SQRT_EXP = (P256_P + 1) // 4
 
 

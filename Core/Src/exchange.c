@@ -1,8 +1,5 @@
-/* The pairing key schedule. See exchange.h for why the curve is not in here.
- *
- * Every integer entering a hash or a KDF is big-endian, and the same values
- * travel little-endian on the wire. That is the project's rule rather than an
- * inconsistency: the byte order belongs to the layer the value is entering. */
+/* The key schedule. Big-endian into hashes, little-endian on the wire.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #include <string.h>
 
 #include "exchange.h"
@@ -58,9 +55,8 @@ void exchange_derive(const uint8_t *z1, const uint8_t *z2,
                 info_confirm_dev, sizeof(info_confirm_dev) - 1u,
                 out->confirm_key_dev, EXCHANGE_CONFIRM_KEY_LEN);
 
-    /* HMAC over the transcript itself, never over its digest: hashing first
-     * gains nothing over a 119-byte message and loses the ability to say which
-     * field a mismatch came from. */
+    /* HMAC over the transcript itself: hashing first cannot name the field.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     hmac_sha256(out->confirm_key_hub, EXCHANGE_CONFIRM_KEY_LEN,
                 transcript, EXCHANGE_TRANSCRIPT_LEN, mac);
     memcpy(out->confirm_hub, mac, EXCHANGE_CONFIRM_LEN);

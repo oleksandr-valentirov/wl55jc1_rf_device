@@ -1,9 +1,5 @@
-/* The quiesce rules, exercised at speed and at the counter wrap.
- *
- * Every rule here is a refusal, and a refusal only runs when something is
- * wrong - which on a bench is never. The two ordering bugs this file was
- * written to catch were both found before it ran, which is the argument for
- * having it: they were found by reading, and reading does not scale. */
+/* The quiesce rules at speed and at the wrap: every rule here is a refusal.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include <stdio.h>
 #include <string.h>
 
@@ -42,8 +38,8 @@ static uint8_t build(uint8_t version, uint32_t sf, uint8_t flags, uint8_t resume
     return (uint8_t)sizeof(b);
 }
 
-/* A device already following the hub. Two beacons, because the first is taken
- * on trust and only the second leaves it in the state a paired device is in. */
+/* Two beacons: the first is taken on trust, the second leaves the paired state.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 static void settle(superframe_t *sf, quiesce_t *q, uint32_t start) {
     memset(sf, 0, sizeof(*sf));
     memset(q, 0, sizeof(*q));
@@ -80,8 +76,8 @@ static void test_gates(void) {
     CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_NOT_BEACON,
           "a join beacon is not a data beacon");
 
-    /* Version is checked before length on purpose: a future layout that happens
-     * to be 14 bytes must still be rejected as a version, not accepted. */
+    /* Version before length: a future layout that is 14 bytes must still be refused.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     len = build(3u, 102u, 0u, 0u);
     CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL) == BEACON_BAD_VERSION,
           "version must be checked before length");
@@ -171,9 +167,8 @@ static void test_rate_limit(void) {
     CHECK(q.active, "after the gap an honest quiesce must be honored again");
 }
 
-/* The first beacon a device hears is taken on trust: superframe_align skips the
- * jump test when it has never been aligned. A quiesce riding on that beacon is
- * therefore a number nothing checked. */
+/* The first beacon is taken on trust, so a quiesce riding it went through no check.
+ * radio_devices_docs/wl55_device/radio/beacon.md */
 static void test_first_beacon_quiesce(void) {
     superframe_t sf; quiesce_t q;
     memset(&sf, 0, sizeof(sf));
@@ -187,9 +182,8 @@ static void test_first_beacon_quiesce(void) {
           "it names went through no plausibility check");
 }
 
-/* The two mechanisms interact, and in the right direction: a device that has
- * just refused a forgery ignores the next announcement, and the hub repeating
- * the announcement is what stops that from costing a legitimate quiesce. */
+/* The hub repeating the announcement is what stops a refusal costing a real quiesce.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 static void test_rejection_then_announce(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 100u);
@@ -221,16 +215,14 @@ static void test_wrap(void) {
     CHECK(!quiesce_active(&q, 2u), "resume superframe is not quiesced");
 }
 
-/* A device whose counter has run ahead of the hub sees every honest beacon as a
- * move backwards, which the unsigned subtract turns into an enormous forward
- * jump. If nothing clears that, the device is deaf until someone power-cycles
- * it - the failure shape the key-lifecycle doc calls the worst kind of safe. */
+/* A counter run ahead sees every honest beacon as an enormous forward jump.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 static void test_recovers_from_running_ahead(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 1000u);
 
-    /* The hub is at 1002 and keeps beaconing; this device thinks it is at 1200
-     * because a bad period estimate ran it forward. */
+    /* Hub at 1002, device at 1200 because a bad period estimate ran it forward.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     sf.counter = 1200u;
 
     int recovered = 0;
@@ -244,28 +236,21 @@ static void test_recovers_from_running_ahead(void) {
     }
     CHECK(recovered, "a device that ran ahead never recovered - deaf until "
                      "power cycle, with the hub transmitting normally");
-    /* 0 is the expected answer now and is the stronger one: the signed jump
-     * test accepts a beacon from behind outright, so recovery no longer has to
-     * go through the eight-refusal escape at all. Printed rather than asserted
-     * as a number, because it is a cost and not a contract. */
+    /* 0 now: the signed jump test accepts from behind, so no escape is needed.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     if (recovered)
         printf("     recovered after %d refused beacon(s)\n", recovered - 1);
 }
 
-/* Forcing a resync must not be a way in. The trust beacon that follows one is
- * exactly the case the was-aligned rule exists for, so the two rules have to
- * compose: an attacker who spends eight frames to clear the alignment still
- * cannot put the device to sleep with the ninth. */
+/* The two rules must compose: eight frames spent must not buy the ninth.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 static void test_resync_does_not_admit_quiesce(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 1000u);
     sf.counter = 1200u;
 
-    /* Beyond SUPERFRAME_MAX_JUMP, because a beacon merely *behind* is no longer
-     * refused - the plausibility test is signed and symmetric now, and being
-     * behind is where every honest beacon arrives while the stub period runs
-     * fast. Forcing a resync therefore costs a real forgery, which is what this
-     * test needs an attacker to have spent. */
+    /* Beyond SUPERFRAME_MAX_JUMP: merely behind is where honest beacons arrive.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     for (int i = 0; i < (int)SUPERFRAME_RESYNC_AFTER; i++) {
         host_clock_advance(SUPERFRAME_US);
         uint8_t len = build(2u, 1200u + SUPERFRAME_MAX_JUMP + 1000u + (uint32_t)i,
@@ -280,14 +265,8 @@ static void test_resync_does_not_admit_quiesce(void) {
           "a quiesce on the trust beacon after a resync must be refused");
 }
 
-/* A missed beacon is not a longer superframe.
- *
- * The hub omits beacons for two superframes on every pairing quiesce, and
- * interference does the same by accident, so "consecutive beacons" and
- * "consecutive superframes" are different things by design. The period estimate
- * survives that only because `frames` comes from the beacon's superframe field
- * rather than from how many beacons were heard - at two superframes the naive
- * version yields 4.0 s, which is a 2x error averaged straight into the estimate. */
+/* A missed beacon is not a longer superframe: frames comes from the beacon's field.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 static void test_missed_beacon_does_not_poison_period(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 500u);
@@ -314,8 +293,8 @@ static void test_period_clamp(void) {
     settle(&sf, &q, 700u);
 
     for (uint32_t i = 0; i < 12u; i++) {
-        /* A transmitter claiming one superframe passed while stalling for three.
-         * Unclamped this walks the estimate up and races the counter. */
+        /* One superframe claimed while stalling for three walks the estimate up.
+         * radio_devices_docs/wl55_device/testing/host-tests.md */
         host_clock_advance(3u * SUPERFRAME_US);
         uint8_t len = build(2u, 702u + i, 0u, 0u);
         beacon_apply(frame, len, &sf, &q, micros() - RADIO_FRAME_AIR_US(14u), NULL);
@@ -325,11 +304,8 @@ static void test_period_clamp(void) {
           (unsigned long)sf.period_us, (unsigned)SUPERFRAME_PERIOD_MAX_US);
 }
 
-/* A hub reboot advances its counter by KV_RESERVE_AHEAD, because the store
- * persists a ceiling rather than the value. Devices see that as a forward jump
- * of up to 4096 superframes - ~2.3 h of counter space - from a hub that is
- * behaving correctly. It has to be accepted, or every hub reboot costs the whole
- * network the eight-beacon self-heal. */
+/* A hub reboot jumps by KV_RESERVE_AHEAD and must be accepted, not self-healed.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 static void test_hub_reboot_jump_is_accepted(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 5000u);

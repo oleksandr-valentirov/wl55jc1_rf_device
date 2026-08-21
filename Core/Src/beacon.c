@@ -1,9 +1,5 @@
-/* Data beacon reception, including the quiesce announcement.
- *
- * Every check here exists because the beacon is cleartext and unauthenticated:
- * anyone with the hop key, or standing on the join channel, can send one. The
- * checks are ordered so a well-formed future layout is rejected rather than
- * misparsed - version before length, length before content. */
+/* Data beacon reception: cleartext and unauthenticated, so version, length, content.
+ * radio_devices_docs/wl55_device/radio/beacon.md */
 #include <string.h>
 
 #include "beacon.h"
@@ -14,10 +10,8 @@
 
 #define BEACON_VERSION  2u
 
-/* Against the contract's literal, not against sizeof - comparing a struct to
- * itself is the vacuous assert this is meant to prevent. The length check below
- * uses sizeof, so a struct that silently changed size would move the check with
- * it and reject every honest beacon as the wrong length. */
+/* Against the contract's literal: the length check below already uses sizeof.
+ * radio_devices_docs/wl55_device/radio/beacon.md */
 #define BEACON_V2_WIRE_BYTES  14u
 _Static_assert(sizeof(radio_data_beacon_t) == BEACON_V2_WIRE_BYTES,
                "v2 data beacon must stay 14 bytes on the wire");
@@ -55,8 +49,8 @@ beacon_rc_t beacon_apply(const uint8_t *frame, uint8_t len,
     if (prc != BEACON_OK)
         return prc;
 
-    /* Both are captured before aligning, because aligning overwrites them:
-     * success sets `aligned` and clears `rejected`. */
+    /* Captured before aligning: success sets aligned and clears rejected.
+     * radio_devices_docs/wl55_device/radio/beacon.md */
     uint8_t  was_aligned    = sf->aligned;
     uint32_t prior_rejected = sf->rejected;
 
@@ -71,24 +65,15 @@ beacon_rc_t beacon_apply(const uint8_t *frame, uint8_t len,
     if (aligned_to != NULL)
         *aligned_to = b.superframe;
 
-    /* Every accepted beacon is a tick. Retiring a lapsed quiesce only on the
-     * frames that carry the flag means normal traffic - which is exactly what
-     * resuming looks like - never clears it. */
+    /* Every accepted beacon is a tick, or resuming traffic never clears the flag.
+     * radio_devices_docs/wl55_device/radio/beacon.md */
     (void)quiesce_active(q, b.superframe);
 
     if (!(b.flags & RADIO_BEACON_FLAG_QUIESCE))
         return BEACON_OK;
 
-    /* A clock this device does not trust cannot be the basis for deciding when
-     * to stop listening: the whole value of the announcement is the superframe
-     * it names, and that name means nothing against a counter nothing checked.
-     *
-     * The condition is "was already aligned", not "is aligned now". Testing the
-     * state after the fact is vacuous - superframe_align sets it to OK on every
-     * success, so it is always OK by the time this runs. What matters is that
-     * align skips the plausibility test for a device that has never been
-     * aligned: the first beacon after boot is taken on trust, and a quiesce
-     * riding on it names a superframe that went through no check at all. */
+    /* Was already aligned, not is aligned now: align sets OK on every success.
+     * radio_devices_docs/wl55_device/radio/beacon.md */
     if (!was_aligned || prior_rejected) {
         q->refused_sync++;
         return BEACON_OK;
@@ -102,19 +87,15 @@ beacon_rc_t beacon_apply(const uint8_t *frame, uint8_t len,
     uint32_t resume_at = b.superframe + in;
 
     if (q->active) {
-        /* The hub commits at announce time and never extends, so a later
-         * announcement naming a later resume is either a bug or a forgery.
-         * Taking the earlier one makes both harmless. */
+        /* The earlier resume: the hub commits at announce time and never extends.
+         * radio_devices_docs/wl55_device/radio/beacon.md */
         if ((int32_t)(resume_at - q->resume_at) < 0)
             q->resume_at = resume_at;
         return BEACON_OK;
     }
 
-    /* The per-beacon clamp bounds one forged announcement, not a sequence of
-     * them: repeating a legal announcement every fifth superframe would keep a
-     * device asleep forever, each copy inside spec. Requiring normal traffic in
-     * between caps quiesce at half the air time, which an operator pairing
-     * several devices pays for in wall-clock and an attacker cannot exceed. */
+    /* The clamp bounds one forgery; requiring traffic between caps quiesce at half.
+     * radio_devices_docs/wl55_device/radio/beacon.md */
     uint32_t since = superframe_now(sf) - q->last_resume;
     if (q->ever && since < RADIO_QUIESCE_MIN_GAP) {
         q->refused_gap++;

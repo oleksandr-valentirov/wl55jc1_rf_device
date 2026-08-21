@@ -26,8 +26,8 @@ HUB_PUB_X = int("6dd84cda7f25d7e0f61097a62565bb30950425cbcd0f93a26fd1a26e9391592
 ECDH_SHARED_X = "39eec3e897d3c11e42681481f592e733eb699f8d54f8917e82222883dcfbd73b"
 HUB_ID, DEV_ID = 0x33442211, 0x0000002A
 
-# v2 inputs. Proposed by the device side; both generators must use the same
-# values or the diff compares nothing.
+# v2 inputs, agreed with the hub: different values make the diff compare nothing.
+# radio_devices_docs/wl55_device/testing/host-tests.md
 REQ_SUPERFRAME = 123456
 DEV_NONCE = bytes.fromhex("a1b2c3d4e5f60718")
 
@@ -90,25 +90,24 @@ def main():
 
     hub_static_c, hub_eph_c, dev_static_c = (compress(hub_pub), compress(hub_eph),
                                              compress(dev_pub))
-    # Hub before device, everywhere; the two freshness fields sit with the ids
-    # they qualify, ahead of any key.
+    # Hub before device everywhere; each freshness field sits with the id it qualifies.
+    # radio_devices_docs/wl55_device/testing/host-tests.md
     T = (be4(HUB_ID) + be4(DEV_ID) + be4(REQ_SUPERFRAME) + DEV_NONCE
          + hub_static_c + hub_eph_c + dev_static_c)
     assert len(T) == 119, f"transcript is {len(T)}, spec says 119"
     assert len(T) != V1_TRANSCRIPT_LEN
 
     k_session = hkdf(salt, Z, b"openhub/v1/session", 16)
-    # The v1 salt was 8 bytes; a v2 run reproducing the v1 session key would
-    # mean the new inputs never reached the KDF, which is the whole point.
+    # Reproducing the v1 session key would mean the new inputs never reached the KDF.
+    # radio_devices_docs/wl55_device/testing/host-tests.md
     assert k_session.hex() != V1_SESSION, "v2 salt did not change the session key"
     print("selfcheck binding session key differs from pair_v1              ok")
     print()
 
     k_hub = hkdf(salt, Z, b"openhub/v1/confirm/hub", 32)
     k_dev = hkdf(salt, Z, b"openhub/v1/confirm/dev", 32)
-    # No hop key: it is a network key delivered in PAIR_ACCEPT, so deriving one
-    # here would publish a vector with no consumer - which is what pair_v1's
-    # pair_key_hop turned out to be.
+    # No hop key: it is a network key, so one here would have no consumer.
+    # radio_devices_docs/wl55_device/testing/host-tests.md
     out = [
         ("pair_req_superframe", f"{REQ_SUPERFRAME:08x}"),
         ("pair_dev_nonce", DEV_NONCE.hex()),

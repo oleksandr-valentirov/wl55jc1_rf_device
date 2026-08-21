@@ -11,16 +11,14 @@
 #define FRAME_MAX_LEN       (FRAME_HEADER_LEN + FRAME_MAX_PAYLOAD + FRAME_TAG_LEN)
 
 #define FRAME_TYPE_DATA     0x01u
-/* From the shared header, never a second opinion held here. A version and a
- * direction each side defines for itself is the 45-vs-49 shape: two asserts
- * pass, both sides agree with themselves, and the frame is refused on air. */
+/* From the shared header: a version each side defines is the 45-vs-49 shape.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #define FRAME_VERSION       RADIO_PROTO_VERSION
 #define FRAME_DIR_UPLINK    RADIO_DIR_UPLINK
 #define FRAME_DIR_DOWNLINK  RADIO_DIR_DOWNLINK
 
-/* The header as transmitted. Little-endian, because these are wire fields -
- * the nonce built from the same values is big-endian, which is the rule and
- * not an inconsistency. */
+/* Little-endian: these are wire fields, and the nonce from them is big-endian.
+ * radio_devices_docs/wl55_device/security/README.md */
 typedef struct {
     uint8_t  type;
     uint8_t  version;
@@ -34,12 +32,7 @@ typedef struct {
     uint16_t net_id;
     uint32_t superframe;      /* the counter this end believes it is on */
     uint32_t tx_floor;        /* refuse to seal below this; it may already be used */
-    /* And refuse at or above this. The floor alone is only half the guarantee:
-     * flash stores a *ceiling* that has been reserved, so counters past it have
-     * not been persisted and a reboot would hand them out a second time. A floor
-     * with no ceiling makes the store's whole purpose conditional on something
-     * that is not checked anywhere. */
-    uint32_t tx_mark;
+    uint32_t tx_mark;         /**< refuse at or above: past it nothing has been persisted */
     uint32_t last_accepted;   /* highest counter already opened, for replay */
     uint8_t  have_accepted;
 } frame_ctx_t;

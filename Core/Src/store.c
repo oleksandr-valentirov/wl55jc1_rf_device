@@ -1,8 +1,5 @@
-/* Non-volatile identity and superframe mark, in the last two flash pages.
- *
- * Append-only across two pages, newest valid sequence number wins. A torn write
- * fails its checksum and is skipped, so a power loss mid-record costs the newest
- * record rather than the store. */
+/* Identity and superframe mark in the last two flash pages, append-only.
+ * radio_devices_docs/wl55_device/arch/store.md */
 #include <string.h>
 
 #include "main.h"
@@ -14,19 +11,11 @@
 #define STORE_PAGE_SIZE  2048u
 #define STORE_SLOT_SIZE  256u
 #define STORE_SLOTS      (STORE_PAGE_SIZE / STORE_SLOT_SIZE)
-/* Bumped for the 128-byte record. The old 64-byte records stay in flash and
- * fail this, so the scanner ignores them - and because the append point is the
- * first *erased* slot rather than one past the last valid record, the writer
- * steps over them instead of aiming at occupied flash. That is the whole
- * migration: a device paired before this bump loses its identity once and
- * re-pairs, rather than failing a write for ever. */
+/* The 256-byte record. Older formats fail this and the scanner steps over them.
+ * radio_devices_docs/wl55_device/arch/store.md */
 #define STORE_MAGIC      0x4B535735u
-/* The 128-byte format. Its records stay in flash and fail both the magic and
- * the CRC, so the scanner steps over them - but "no record" and "a record this
- * build cannot read" are different facts that demand opposite answers, and a
- * store that reports only the first turns a format change into a device that
- * looks like it was never provisioned. `store_legacy_present()` separates
- * them. */
+/* The 128-byte format: unreadable here is a different fact from absent.
+ * radio_devices_docs/wl55_device/arch/store.md */
 #define STORE_LEGACY_MAGIC  0x4B535734u
 #define STORE_LEGACY_SLOT   128u
 
@@ -36,52 +25,27 @@ typedef struct {
     uint32_t dev_id;
     uint32_t counter_mark;
     uint8_t  priv[STORE_PRIV_LEN];
-    /* The generation rx_floor belongs to. Clearing the floor on key install is
-     * correct but procedural - it works because the call site is right, which is
-     * a property of today's code and not of the data. Naming the generation makes
-     * a stale floor detectable instead, so a missed clear fails loudly rather
-     * than making the device silently deaf. */
-    uint32_t key_gen;
+    uint32_t key_gen;       /**< which generation rx_floor belongs to, so a stale one shows */
     uint32_t rx_floor;      /* replay window survives a reset only if stored */
-    /* Everything below is what a device needs to still be paired after a power
-     * cut. The session key cannot be re-derived: that would need hub_eph, which
-     * exists only for the length of the exchange. Without these a device pairs
-     * successfully and is dead at the next reset.
-     *
-     * hop_key, hub_static, slot and report_every have no writer yet - they
-     * arrive with PAIR_ACCEPT and with provisioning, neither of which is built.
-     * They are here now because the record format has to be right before anyone
-     * pairs, not because they work. */
-    uint8_t  session[STORE_KEY_LEN];
+    uint8_t  session[STORE_KEY_LEN];        /**< the grant; the four below have no writer yet */
     uint8_t  hop_key[STORE_KEY_LEN];        /* network-wide, from PAIR_ACCEPT */
     uint8_t  hub_static[STORE_PUB_C_LEN];   /* provisioned; Z1 needs it */
     uint8_t  slot;                          /* granted uplink slot */
     uint8_t  report_every;
-    /* The highest superframe at which a PAIR_INIT was accepted. Durable because
-     * the alternative is a rate limit, and a rate limit resets on reboot: an
-     * attacker with a recording and a power cut beats one and not the other.
-     * Same shape as the hub's counter ceiling for the same reason. */
-    uint32_t init_ceiling;
-    /* Learned from a join beacon. Carved out of the pad rather than appended,
-     * so the record keeps its size and its magic: every existing record was
-     * written from a zeroed struct, so these read 0 - which is the same answer
-     * as "no beacon heard yet" and needs no migration to mean it. */
-    uint32_t hub_id;
+    uint32_t init_ceiling;  /**< durable, because a rate limit resets on reboot */
+    uint32_t hub_id;        /**< carved out of the pad, so 0 still means absent */
     uint16_t net_id;
     uint8_t  pad[119];      /* fills the slot exactly; covered by the CRC */
     uint32_t crc;
 } __attribute__((packed)) store_record_t;
 
-/* Filling the slot exactly is a more useful invariant than any particular size:
- * it is what makes a record one whole erase-unit write with no filler that a
- * future field could quietly claim. */
+/* Filling the slot exactly is the invariant: one erase-unit write, no spare filler.
+ * radio_devices_docs/wl55_device/arch/store.md */
 _Static_assert(sizeof(store_record_t) == STORE_SLOT_SIZE,
                "record must fill a slot exactly");
 
-/* Read-only. Nothing here writes a legacy record or migrates one: the identity
- * is re-created and re-enrolled instead, which is two commands and no recovery
- * path that has never run. What this does is stop a format change from being
- * reported as an empty store. */
+/* Read-only. Nothing migrates: the identity is re-created and re-enrolled.
+ * radio_devices_docs/wl55_device/arch/store.md */
 int store_legacy_present(uint32_t *dev_id_out) {
     const uint32_t pages[2] = {STORE_PAGE_A, STORE_PAGE_B};
     int found = 0;
@@ -91,8 +55,8 @@ int store_legacy_present(uint32_t *dev_id_out) {
             if (w[0] != STORE_LEGACY_MAGIC)
                 continue;
             found++;
-            /* dev_id is the third word in both formats; reported so an operator
-             * can tell which device this was before re-enrolling it. */
+            /* dev_id is the third word in both formats, so the operator can name the device.
+             * radio_devices_docs/wl55_device/arch/store.md */
             if (dev_id_out != NULL)
                 *dev_id_out = w[2];
         }
@@ -105,8 +69,8 @@ static uint32_t       cached_page;
 static uint32_t       cached_slot;
 static uint8_t        cached_valid;
 
-/* Bitwise CRC-32, no table. The store writes a handful of records an hour, so
- * the speed does not matter and a 1 KB table would. */
+/* Bitwise, no table: a handful of records an hour, and 1 KB would matter.
+ * radio_devices_docs/wl55_device/arch/store.md */
 static uint32_t crc32(const uint8_t *data, uint32_t len) {
     uint32_t crc = 0xFFFFFFFFu;
     for (uint32_t i = 0; i < len; i++) {
@@ -142,8 +106,8 @@ static int page_erase(uint32_t page) {
     return (st == HAL_OK && err == 0xFFFFFFFFu) ? 0 : -1;
 }
 
-/* Writes are doubleword only on this part, so the record is padded to a
- * multiple of eight and programmed one 64-bit word at a time. */
+/* Doubleword writes only on this part, so the record is padded to a multiple of 8.
+ * radio_devices_docs/wl55_device/arch/store.md */
 static int slot_write(uint32_t page, uint32_t slot, const store_record_t *r) {
     uint8_t buf[STORE_SLOT_SIZE];
     memset(buf, 0xFF, sizeof(buf));
@@ -164,8 +128,8 @@ static int slot_write(uint32_t page, uint32_t slot, const store_record_t *r) {
         }
     }
     HAL_FLASH_Lock();
-    /* Read back before trusting it. A mark that was not actually stored would
-     * let the counter restart below a value already used. */
+    /* Read back before trusting it: an unstored mark restarts below a used counter.
+     * radio_devices_docs/wl55_device/arch/store.md */
     return record_ok(slot_at(page, slot)) ? 0 : -1;
 }
 
@@ -196,16 +160,8 @@ static void scan(void) {
     }
 }
 
-/* The first *erased* slot, not one past the last valid record. Those differ
- * whenever a slot holds something the scanner rejects - a torn write, or records
- * of an older format after a version bump - and the difference is expensive
- * here: aiming at an occupied slot sends append straight to the page swap, which
- * erases a whole page and abandons up to 31 free slots on this one.
- *
- * That erase is the most dangerous operation in the system. It stalls the core
- * for 22 ms, and an erase interrupted on a bank the core fetches from can leave
- * uncorrectable ECC that faults every subsequent boot. Reaching it because one
- * record was torn is not a trade worth making. */
+/* The first erased slot, never one past the last valid record: the page swap is 22 ms.
+ * radio_devices_docs/wl55_device/arch/store.md */
 static uint32_t first_free_slot(uint32_t page) {
     for (uint32_t s = 0; s < STORE_SLOTS; s++)
         if (slot_is_free(page, s))
@@ -223,9 +179,8 @@ static int append(const store_record_t *src) {
     r.crc   = crc32((const uint8_t *)&r, sizeof(r) - 4u);
 
     if (slot >= STORE_SLOTS) {
-        /* Move to the other page. Erasing it first means the old page stays
-         * readable until the new record is down, so a power loss here loses
-         * nothing that was already committed. */
+        /* Erase the destination first: the old page stays readable until the record is down.
+         * radio_devices_docs/wl55_device/arch/store.md */
         page = (page == STORE_PAGE_A) ? STORE_PAGE_B : STORE_PAGE_A;
         if (page_erase(page) != 0)
             return -1;
@@ -250,9 +205,8 @@ int store_init(store_state_t *out) {
     out->dev_id       = cached.dev_id;
     out->counter_mark = cached.counter_mark;
     out->key_gen      = cached.key_gen;
-    /* A floor from a generation this device no longer runs is not merely stale,
-     * it is unusable: it would refuse counters that were never seen under the
-     * current key. Report it as absent rather than letting it filter. */
+    /* Absent, not filtering: a floor from another generation refuses unseen counters.
+     * radio_devices_docs/wl55_device/arch/store.md */
     out->rx_floor     = cached.rx_floor;
     out->init_ceiling = cached.init_ceiling;
     out->hub_id       = cached.hub_id;
@@ -266,20 +220,8 @@ int store_init(store_state_t *out) {
     return 0;
 }
 
-/* The replay floor is a property of a *key*, not of a device: a fresh pairing
- * makes a fresh nonce space, and carrying the old floor forward would make the
- * device deaf until the hub's counter climbed past it, possibly for ever.
- *
- * Key, generation and floor move in one record. As two appends it worked only
- * because the call order happened to be right - a property of today's callers,
- * not of the data - and a reset between them left a floor belonging to the key
- * it had just replaced. This replaced store_clear_rx_floor(), which could clear
- * the floor without storing the key that made it stale. */
-/* Provisioned out of band and never transmitted, so a reflash that loses it
- * costs a pairing window with no diagnosis on the air at all. */
-/* One write for the whole grant: session, hop key and the slot assignment are
- * a single fact, and a reboot between two writes would leave a device holding
- * a key for a slot it was not granted. */
+/* One write for the whole grant: session, hop key and slot are a single fact.
+ * radio_devices_docs/wl55_device/arch/store.md */
 int store_save_pairing(const uint8_t *session, const uint8_t *hop_key,
                        uint8_t slot, uint8_t report_every) {
     store_record_t r;
@@ -290,8 +232,8 @@ int store_save_pairing(const uint8_t *session, const uint8_t *hop_key,
     memcpy(r.hop_key, hop_key, STORE_KEY_LEN);
     r.slot         = slot;
     r.report_every = report_every;
-    /* A fresh pairing is a fresh nonce space, so the floor from the old key
-     * must not survive it - see the rx_floor note in store_save_session. */
+    /* A fresh pairing is a fresh nonce space, so the old key's floor must not survive.
+     * radio_devices_docs/wl55_device/arch/store.md */
     r.key_gen  = cached.key_gen + 1u;
     r.rx_floor = 0;
     return append(&r);
@@ -318,6 +260,8 @@ int store_save_hub_static(const uint8_t *pub_c) {
     return append(&r);
 }
 
+/* Key and floor in one record: hub_eph is gone, so there is no second chance.
+ * radio_devices_docs/wl55_device/arch/store.md */
 int store_save_session(const uint8_t *session) {
     store_record_t r;
     if (!cached_valid)
@@ -334,8 +278,8 @@ int store_save_identity(const uint8_t *priv, uint32_t dev_id) {
     memset(&r, 0, sizeof(r));
     memcpy(r.priv, priv, STORE_PRIV_LEN);
     r.dev_id = dev_id;
-    /* A new identity starts the counter afresh; the old mark belonged to a key
-     * that no longer exists, so it cannot cause reuse. */
+    /* A new identity starts the counter afresh; the old mark's key no longer exists.
+     * radio_devices_docs/wl55_device/arch/store.md */
     r.counter_mark = STORE_COUNTER_STEP;
     r.key_gen = 0;
     r.rx_floor = 0;
@@ -351,12 +295,8 @@ int store_reserve_counter(uint32_t counter_now, uint32_t *first_safe,
     r = cached;
     *first_safe = cached.counter_mark;
 
-    /* Reserve past wherever the counter actually is, not one step past where it
-     * was. The clock jumps: a hub reboot advances it by the hub's own reserve,
-     * and a device that slept through a day comes back tens of thousands of
-     * superframes on. Stepping by a fixed amount would need one flash write per
-     * step to catch up - and refuse to transmit for all of them - which turns a
-     * legitimate resynchronisation into a slow wear loop. */
+    /* Past where the counter is, not one step past where it was: the clock jumps.
+     * radio_devices_docs/wl55_device/arch/store.md */
     uint32_t base = cached.counter_mark;
     if ((int32_t)(counter_now - base) >= 0)
         base = counter_now + 1u;
@@ -368,9 +308,8 @@ int store_reserve_counter(uint32_t counter_now, uint32_t *first_safe,
     return 0;
 }
 
-/* Persisted on the same amortised schedule as the send mark. Without it a reset
- * reopens the replay window completely: nothing on the device remembers which
- * counters it has already accepted. */
+/* Amortised with the send mark: without it a reset reopens the replay window.
+ * radio_devices_docs/wl55_device/arch/store.md */
 int store_note_received(uint32_t counter) {
     store_record_t r;
 
@@ -393,9 +332,8 @@ int store_init_ceiling(uint32_t *out) {
 int store_save_init_ceiling(uint32_t superframe) {
     if (!cached_valid)
         return -1;
-    /* Never downwards. A ceiling that can fall is not a ceiling, and the caller
-     * is holding a value that came off an authenticated frame - but the write
-     * is the durable part, so the monotonicity belongs here too. */
+    /* Never downwards, and here rather than at the caller: the write is the durable part.
+     * radio_devices_docs/wl55_device/arch/store.md */
     if ((int32_t)(superframe - cached.init_ceiling) <= 0)
         return 0;
     store_record_t r = cached;
@@ -421,12 +359,8 @@ int store_key_gen(uint32_t *gen) {
     return 0;
 }
 
-/* Write a record with its last doubleword omitted. On flash the result is
- * byte-identical to a write torn at that point, so it tests the property that
- * was previously only reasoned about: a partial record and an absent one are
- * both invisible to the scanner. It does not test the power path - that needs
- * the supply removed mid-program - but it does test the half that the recovery
- * argument actually rests on. */
+/* A record short one doubleword is byte-identical to a torn write. Not the power path.
+ * radio_devices_docs/wl55_device/arch/store.md */
 int store_write_torn(void) {
     store_record_t r;
     uint8_t buf[STORE_SLOT_SIZE];
@@ -468,9 +402,8 @@ int store_erase_all(void) {
     return rc;
 }
 
-/* The total is reported rather than left for the caller to know. The console
- * held its own literal 64, which stayed behind when the slot grew to 128 bytes
- * and printed a confident wrong denominator over correct numerators. */
+/* The store reports its own total: the console's literal stayed at 64 once.
+ * radio_devices_docs/wl55_device/arch/store.md */
 void store_stats(uint32_t *records, uint32_t *slots_free, uint32_t *slots_total) {
     uint32_t pages[2] = {STORE_PAGE_A, STORE_PAGE_B};
     uint32_t used = 0, free_slots = 0;

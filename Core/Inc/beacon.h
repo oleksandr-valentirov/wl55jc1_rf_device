@@ -5,12 +5,8 @@
 #include "superframe.h"
 #include "radio_slots.h"
 
-/* Data beacon reception: the version gate, the clock alignment and the quiesce
- * announcement, in one place so the CLI cannot skip a check by accident.
- *
- * The beacon is unauthenticated, so every field it carries is an attacker's
- * input. Alignment already refuses implausible jumps; quiesce needs the same
- * treatment because it is the one field that tells a device to stop listening. */
+/* Beacon reception in one place, so the CLI cannot skip a check by accident.
+ * radio_devices_docs/wl55_device/radio/beacon.md */
 
 typedef enum {
     BEACON_OK = 0,
@@ -21,9 +17,8 @@ typedef enum {
     BEACON_SUSPECT          /* a jump too large to believe */
 } beacon_rc_t;
 
-/* The gap is RADIO_QUIESCE_MIN_GAP from the shared header - both ends enforce
- * it, and a device accepting less than the hub allows itself would refuse the
- * hub's own legitimate quiesce. */
+/* RADIO_QUIESCE_MIN_GAP: accepting less than the hub allows itself refuses it.
+ * radio_devices_docs/wl55_device/radio/beacon.md */
 
 typedef struct {
     uint8_t  active;

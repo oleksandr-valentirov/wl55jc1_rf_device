@@ -6,11 +6,8 @@
 #define STORE_KEY_LEN   16
 #define STORE_PUB_C_LEN 33   /* compressed SEC1 */
 
-/* The superframe counter feeds the GCM nonce, so it must never go backwards
- * across a reset: a repeated counter under a surviving key is nonce reuse, and
- * GCM leaks its authentication subkey rather than merely a plaintext. Persisting
- * every superframe would wear the page out, so what is stored is a mark ahead of
- * the counter and only values below it are ever used. */
+/* A mark ahead of the counter: persisting every superframe would wear the page.
+ * radio_devices_docs/wl55_device/arch/store.md */
 #ifndef STORE_COUNTER_STEP
 #define STORE_COUNTER_STEP 1000u
 #endif

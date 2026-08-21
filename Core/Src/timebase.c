@@ -1,5 +1,5 @@
-/* Microsecond timebase. TIM2 free-runs at 1 MHz over its full 32 bits, so the
- * counter wraps every ~71.6 minutes and every comparison here survives that. */
+/* TIM2 free-runs at 1 MHz over 32 bits; every comparison survives the wrap.
+ * radio_devices_docs/wl55_device/radio/timebase.md */
 #include "main.h"
 #include "timebase.h"
 

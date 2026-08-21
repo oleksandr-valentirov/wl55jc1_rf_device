@@ -5,19 +5,8 @@
 #include "radio_protocol.h"
 #include "sha256.h"
 
-/* The pairing key schedule, written from the hub session's pair_v2 spec text
- * and not from its source. Two implementations agreeing is the only evidence
- * that the specification is complete.
- *
- * Deliberately free of crypto.h and of the HAL: everything here is SHA-256 and
- * byte layout, which is exactly where two independent implementations diverge
- * in silence. The two scalar multiplications that produce Z live in pairing.c,
- * so this file compiles and is tested on the host.
- *
- * v2 exists because v1 had no device-side freshness: Z and the transcript were
- * fixed by the two identities plus hub_eph, so a recorded PAIR_RSP re-derived
- * the same session key forever. The request's superframe and an 8-byte device
- * nonce now enter both the salt and the transcript. */
+/* The pair_v2 key schedule, from the spec text and free of crypto.h and the HAL.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 
 #define EXCHANGE_Z_TERM_LEN      32u
 #define EXCHANGE_Z_LEN           (2u * EXCHANGE_Z_TERM_LEN)
@@ -26,21 +15,20 @@
 #define EXCHANGE_CONFIRM_KEY_LEN 32u
 #define EXCHANGE_KEY_LEN         16u
 
-/* Taken from the wire struct rather than written as 33, so a compressed point
- * that ever changes width moves the transcript with it. */
+/* From the wire struct, never 33: a point that changes width moves the transcript.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #define EXCHANGE_POINT_LEN \
     ((uint32_t)sizeof(((radio_pair_req_t *)0)->pubkey))
 
 /* hub_id | dev_id | superframe | dev_nonce, big-endian throughout. */
 #define EXCHANGE_SALT_LEN        (4u + 4u + 4u + EXCHANGE_NONCE_LEN)
 
-/* The salt, then hub_static | hub_eph | dev_static - hub keys before the
- * device's in every concatenation. Whichever key is not bound is not bound. */
+/* Hub keys before the device's: whichever key is not bound is not bound.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #define EXCHANGE_TRANSCRIPT_LEN  (EXCHANGE_SALT_LEN + 3u * EXCHANGE_POINT_LEN)
 
-/* No hop key. It is a network key delivered sealed in PAIR_ACCEPT, not a
- * pairwise one - deriving it here would be a key with no consumer, which is
- * how a pairwise hop key survived a byte-for-byte vector match. */
+/* No hop key here: a network key derived here would be a key with no consumer.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 typedef struct {
     uint8_t session[EXCHANGE_KEY_LEN];
     uint8_t confirm_key_hub[EXCHANGE_CONFIRM_KEY_LEN];

@@ -1,11 +1,5 @@
-/* The pairing key schedule against the hub's published pair_v2.
- *
- * Included from the hub tree rather than copied, so a change to the contract
- * breaks this build instead of going wrong on air months later.
- *
- * The transcript is rebuilt from wire_v3's compressed static keys and pair_v2's
- * ephemeral, never from slices of PV_TRANSCRIPT - checking a value against a
- * slice of itself is the vacuous form of this test. */
+/* pair_v2 from the hub tree, with the transcript rebuilt rather than sliced.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include <stdio.h>
 #include <string.h>
 
@@ -56,9 +50,8 @@ int main(void) {
                         V_HUB_PUB_C, PV_HUB_EPH_PUB, V_DEV_PUB_C, transcript);
     eq("transcript", transcript, PV_TRANSCRIPT, sizeof(PV_TRANSCRIPT));
 
-    /* Currently true and deliberately not relied on: exchange_salt builds its
-     * own bytes. A spec change that moved dev_nonce behind the keys would fail
-     * here rather than let the two agree with each other by construction. */
+    /* Currently true and deliberately not relied on: exchange_salt builds its own bytes.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     eq("salt is the transcript prefix", transcript, salt, sizeof(salt));
 
     exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt, transcript, &k);
@@ -68,8 +61,8 @@ int main(void) {
     eq("confirm hub", k.confirm_hub, PV_CONFIRM_HUB, 16);
     eq("confirm dev", k.confirm_dev, PV_CONFIRM_DEV, 16);
 
-    /* The point of v2: the device's freshness must reach the KDF. A derivation
-     * that dropped the nonce would reproduce every value above and be wrong. */
+    /* The device's freshness must reach the KDF, or every value above still passes.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     uint8_t salt_bad[EXCHANGE_SALT_LEN];
     uint8_t nonce_bad[EXCHANGE_NONCE_LEN];
     exchange_keys_t k2;
@@ -85,8 +78,8 @@ int main(void) {
     check("one superframe changes the session key",
           memcmp(k2.session, PV_KEY_SESSION, sizeof(PV_KEY_SESSION)) != 0);
 
-    /* Z is two terms and the order carries meaning: Z1 authenticates, Z2 is
-     * fresh. Swapping them is a whole-key error with no other symptom. */
+    /* Z1 authenticates, Z2 is fresh: swapping them is a whole-key error.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     exchange_derive(PV_Z + EXCHANGE_Z_TERM_LEN, PV_Z, salt, transcript, &k2);
     check("swapping the Z terms changes the session key",
           memcmp(k2.session, PV_KEY_SESSION, sizeof(PV_KEY_SESSION)) != 0);

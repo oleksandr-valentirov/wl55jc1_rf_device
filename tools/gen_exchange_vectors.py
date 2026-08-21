@@ -59,11 +59,8 @@ def main():
     print(f"fingerprint_displayed  = {fp[:6].hex().upper()}")
     print()
 
-    # 3. Transcript: four named byte strings, dev id first.
-    # Ids in the same order as the HKDF salt. The salt is pinned in wire_v3 and
-    # cannot move, so the transcript is the side that yields - two orderings of
-    # the same two fields in one exchange is an invitation to a confirmation
-    # mismatch with no diagnosable cause.
+    # 3. Transcript, in the salt's order: wire_v3 pins the salt, so this yields.
+    # radio_devices_docs/wl55_device/testing/host-tests.md
     t_items = [
         ("t_hub_id_be", be32(HUB_ID)),
         ("t_dev_id_be", be32(DEV_ID)),
@@ -79,8 +76,8 @@ def main():
     print(f"{'transcript_sha256':22s} = {hashlib.sha256(T).hexdigest()}")
     print()
 
-    # 4. Confirmations. HMAC is over T itself, per the spec's formula - not over
-    # SHA-256(T), which the phrase "transcript hash" elsewhere could be read as.
+    # 4. Confirmations. HMAC over T itself, per the spec, never over SHA-256(T).
+    # radio_devices_docs/wl55_device/testing/host-tests.md
     k_hub = hkdf(salt, SHARED_X, b"openhub/v1/confirm/hub", 32)
     k_dev = hkdf(salt, SHARED_X, b"openhub/v1/confirm/dev", 32)
     print(f"k_confirm_hub          = {k_hub.hex()}")

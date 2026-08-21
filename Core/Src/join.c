@@ -1,11 +1,5 @@
-/* The device's half of the four-frame exchange, written from pair_v2 and the
- * shared header rather than from the hub's source.
- *
- * Ordering is the design: every cheap refusal happens before the two scalar
- * multiplications, because a frame addressed elsewhere must not cost 200 ms of
- * PKA, and the confirmation is checked before PAIR_CONF goes out, because
- * answering an exchange this end cannot verify is how a relay gets a device to
- * talk to it. */
+/* The device's half of the four-frame exchange, from pair_v2 and the shared header.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #include <string.h>
 
 #include "join.h"
@@ -21,11 +15,8 @@
 static join_stats_t stats;
 static uint8_t last_req[sizeof(radio_pair_req_t)];
 
-/* One place, because `join show` reported NOT SET while join_run found the key
- * in flash and proceeded - a display that contradicted the behaviour beside it,
- * which is how an operator sets a key that is already there or concludes the
- * device is not ready when it is. The key is provisioned out of band and
- * nothing on air supplies it, so losing it to a reflash costs a window. */
+/* One source: `join show` read RAM while join_run read flash, and they disagreed.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 int join_hub_static_ready(join_result_t *res) {
     store_state_t st;
     if (res->have_hub_static)
@@ -59,9 +50,8 @@ static void compress_pub(const uint8_t *sec1_65, uint8_t *out33) {
     memcpy(out33 + 1, sec1_65 + 1, 32);
 }
 
-/* Wire fields are little-endian; everything entering the crypto layer is
- * big-endian. Both rules are live inside one frame, which is why the shared
- * vectors pin whole frames rather than a field list. */
+/* Wire fields little-endian, crypto inputs big-endian; the vectors pin whole frames.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static void build_request(const pairing_ctx_t *p, uint32_t superframe, uint8_t *out) {
     radio_pair_req_t f;
     f.type       = RADIO_FRAME_PAIR_REQ;
@@ -93,10 +83,8 @@ static int listen_join_beacon(uint32_t timeout_ms, radio_join_beacon_t *b) {
     info.timeout_us = timeout_ms * 1000u;
     int rrc = radio_receive(rx, sizeof(rx), &info);
     if (rrc != 0) {
-        /* -3 is a frame that arrived and failed its CRC, which is a completely
-         * different fact from silence: it says the carrier, the bitrate and the
-         * sync word are all right and only the checksum disagrees. Collapsing
-         * the two is what made the first attempt undiagnosable. */
+        /* -3 is a CRC failure: carrier, bitrate and sync word right, checksum alone wrong.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         if (rrc == -3)
             stats.beacon_crc_err++;
         else
@@ -104,8 +92,8 @@ static int listen_join_beacon(uint32_t timeout_ms, radio_join_beacon_t *b) {
         stats.last_len = 0;
         return -1;
     }
-    /* Recorded before anything is judged: a length and an RSSI say whether the
-     * hub is audible at all, which no refusal counter can. */
+    /* Recorded before anything is judged: says whether the hub is audible at all.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     stats.last_len = info.len;
     stats.last_rssi_dbm = info.rssi_dbm;
     stats.last_type = info.len ? rx[0] : 0u;
@@ -116,18 +104,16 @@ static int listen_join_beacon(uint32_t timeout_ms, radio_join_beacon_t *b) {
     }
     memcpy(b, rx, sizeof(*b));
     if (!(b->flags & RADIO_JOIN_FLAG_WINDOW_OPEN)) {
-        /* Counted apart from silence: a closed window is a working hub and an
-         * operator who has not pressed the button, which is not a fault. */
+        /* Counted apart from silence: a closed window is a hub working and nobody pressing.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         stats.beacon_closed++;
         return -2;
     }
     return 0;
 }
 
-/* The hub's join beacon shares this channel every second superframe, so the
- * first frame in a response window is usually not the answer. Refusing it must
- * not close the window - that loses every reply sent more than one beacon
- * period away, which is most of them. */
+/* Refusing the first frame must not close the window: the join beacon shares this.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static int receive_until(uint8_t *rx, uint8_t cap, radio_rx_info_t *info,
                          uint8_t want_type, uint32_t t0, uint32_t budget_us,
                          uint32_t *skipped, uint32_t *crc_err,
@@ -151,11 +137,8 @@ static int receive_until(uint8_t *rx, uint8_t cap, radio_rx_info_t *info,
     }
 }
 
-/* The superframe is read from `res`, never passed. It used to be a parameter,
- * and a caller that updated the request's source and not the transcript's sent
- * one number and hashed another - with every check before the confirmation
- * passing, because only the confirmation is about the two sides agreeing. One
- * source is the fix; a test that catches the divergence is not. */
+/* Read from `res`, never passed: two sources let a caller send one number and hash another.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static int handle_response(pairing_ctx_t *p, join_result_t *res,
                            const uint8_t *rx, uint8_t len,
                            exchange_keys_t *keys) {
@@ -172,8 +155,8 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
         return -3;
     }
     if (get_le32(rx + 2) != p->hub_id || get_le32(rx + 6) != p->dev_id) {
-        /* Before the PKA, not after: two devices can be joining in one window
-         * and the other one's response must cost nothing. */
+        /* Before the PKA: another device's response in the same window must cost nothing.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         stats.rsp_wrong_ids++;
         return -4;
     }
@@ -181,9 +164,8 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
     const uint8_t *eph_c = rx + offsetof(radio_pair_rsp_t, eph_pubkey);
     const uint8_t *confirm = rx + offsetof(radio_pair_rsp_t, confirm);
 
-    /* Rejects the hub's static key reused as an ephemeral, and nothing else.
-     * A recorded response replays past this untouched - dev_nonce is what makes
-     * that fail, not this. */
+    /* Rejects the hub's static key as an ephemeral and nothing else; dev_nonce stops replays.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (exchange_eph_is_static(eph_c, res->hub_static)) {
         stats.rsp_eph_is_static++;
         return -5;
@@ -199,8 +181,8 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
         stats.rsp_bad_point++;
         return -6;
     }
-    /* Z1 authenticates the hub, Z2 supplies its freshness. Hub term first in
-     * every concatenation; the order is a whole-key error with no symptom. */
+    /* Hub term first in every concatenation: the order is a whole-key error with no symptom.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (crypto_p256_ecdh(p->priv, hub_static_full, z1) != 0 ||
         crypto_p256_ecdh(p->priv, peer, z2) != 0) {
         stats.rsp_bad_point++;
@@ -216,8 +198,8 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
     memset(z2, 0, sizeof(z2));
 
     if (!exchange_confirm_equal(confirm, keys->confirm_hub)) {
-        /* Nothing goes out after this fails. Answering an exchange this end
-         * cannot verify is how a relay gets a device to talk to it. */
+        /* Nothing goes out after this fails, or a relay gets the device talking to it.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         memset(keys, 0, sizeof(*keys));
         stats.rsp_confirm_bad++;
         return -7;
@@ -225,9 +207,8 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
     return 0;
 }
 
-/* Kept, not debug scaffolding: if the first on-air exchange fails its tag, the
- * fastest thing either side can do is read its nonce out loud. Nothing else
- * distinguishes a wrong key from a wrong nonce assembly. */
+/* Kept: nothing else separates a wrong key from a wrong nonce assembly.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static uint8_t last_accept_nonce[12];
 static uint8_t last_accept_ct_len;
 
@@ -236,11 +217,8 @@ static int handle_accept(join_result_t *res, const uint8_t *rx, uint8_t len,
     const uint32_t req_superframe = res->superframe;
     uint8_t nonce[12];
     radio_pair_grant_t grant;
-    /* The grant carries the hop key inside it. Adding sizeof(hop_key) on top
-     * of it double-counted, gave a 35-byte body, and failed the tag on a frame
-     * with nothing wrong - which on air is indistinguishable from a radio
-     * fault. Caught by opening the hub's published frame rather than one built
-     * on this side, which would have agreed with the same mistake. */
+    /* The grant carries the hop key inside it; adding its size again gave a 35-byte body.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     uint8_t plain[sizeof(radio_pair_grant_t)];
     _Static_assert(sizeof(radio_pair_grant_t) == 19u,
                    "the sealed grant is 19 bytes; pair_v2 pins the frame at 50");
@@ -252,9 +230,8 @@ static int handle_accept(join_result_t *res, const uint8_t *rx, uint8_t len,
     }
     uint32_t sf = get_le32(rx + offsetof(radio_pair_accept_t, superframe));
     uint8_t retry = rx[offsetof(radio_pair_accept_t, retry)];
-    /* Cheap, and before the tag. The exchange lives inside one quiesce, so a
-     * frame claiming to be far from the request is a recording or a lost
-     * window. This bounds a replay; it does not make the exchange fresh. */
+    /* Cheap, before the tag. Bounds a replay; it does not make the exchange fresh.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if ((int32_t)(sf - req_superframe) < 0 ||
         (uint32_t)(sf - req_superframe) > JOIN_ACCEPT_WINDOW_SF) {
         stats.accept_outside_window++;
@@ -273,8 +250,8 @@ static int handle_accept(join_result_t *res, const uint8_t *rx, uint8_t len,
     memcpy(last_accept_nonce, nonce, sizeof(last_accept_nonce));
     last_accept_ct_len = (uint8_t)sizeof(plain);
 
-    /* Zeroed before the copy: HAL_CRYP_Decrypt leaves the unused bytes of a
-     * partial final word unmasked, and 19 is not a multiple of four. */
+    /* Zeroed before the copy: 19 is not a multiple of four and decrypt does not mask.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     memset(plain, 0, sizeof(plain));
     if (crypto_gcm_open(keys->session, nonce, rx, RADIO_PAIR_ACCEPT_AAD_LEN,
                         rx + RADIO_PAIR_ACCEPT_AAD_LEN, sizeof(plain), plain,
@@ -300,8 +277,8 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
                        const pair_init_ctx_t *ic, uint32_t ceiling) {
     uint8_t frame[sizeof(radio_pair_req_t)];
     uint8_t rx[64];
-    /* Zeroed: the invited path never fills it, and an uninitialised superframe
-     * read out of here is a garbage transcript rather than a visible error. */
+    /* Zeroed: the invited path never fills it, and garbage here is not a visible error.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     radio_join_beacon_t beacon = {0};
     radio_rx_info_t info = {0};
     exchange_keys_t keys;
@@ -311,24 +288,19 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         return -20;
     if (!p->have_key && pairing_keygen(p) != 0)
         return -21;
-    /* A full configure, not a retune: the join channel needs the protocol sync
-     * word, and `radio init` leaves this board in bench mode by default. */
+    /* A full configure, not a retune: the join channel needs the protocol sync word.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (radio_configure(radio_join_slot()) != 0)
         return -22;
 
-    /* Two ways in, one exchange behind them. v2 takes the cleartext beacon;
-     * v3 takes an addressed invitation whose MAC has already been checked, and
-     * the difference is that the second one cannot be forged into starting an
-     * exchange. Everything after this point is identical, deliberately - the
-     * trigger changed, the protocol did not. */
+    /* Two triggers, one exchange: everything past this point is identical by design.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     uint32_t t_beacon;
     if (ic != NULL) {
         uint8_t inv[sizeof(radio_pair_init_t)];
         uint32_t sf = 0;
-        /* Before the receive, not after the frame. Z1 is a function of two
-         * static keys, so it can be paid for at any time - and paid for after
-         * the invitation it puts 103 ms between the trigger and the request,
-         * which measured 152 ms on air against the ~25 ms the hub waits. */
+        /* Before the receive: paid after, Z1 puts 103 ms between trigger and request.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         if (pair_init_prepare(ic) != 0)
             return -31;
         rc = receive_until(inv, sizeof(inv), &info, RADIO_FRAME_PAIR_INIT,
@@ -349,8 +321,8 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
                     ((uint32_t)inv[6] << 16) | ((uint32_t)inv[7] << 24);
         p->net_id = (uint16_t)((uint16_t)inv[2] | ((uint16_t)inv[3] << 8));
         res->superframe = sf;
-        /* Only after the MAC, and only forwards - the same rule the ceiling
-         * follows, because both are written off the same frame. */
+        /* Only after the MAC, and only forwards, as the ceiling is.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         (void)store_save_init_ceiling(sf);
     } else {
         rc = listen_join_beacon(timeout_ms, &beacon);
@@ -361,13 +333,12 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         p->net_id  = beacon.net_id;
         res->superframe = beacon.superframe;
     }
-    /* Kept, because verifying a PAIR_INIT after a reset needs the network it
-     * must claim to be from - and PAIR_INIT exists to replace the very beacon
-     * that carries it. Writes only when the value moves. */
+    /* Kept: PAIR_INIT replaces the beacon that would name its network. Writes on change.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     (void)store_save_network(p->hub_id, p->net_id);
 
-    /* Fresh per attempt, and refused rather than sent as zero: a zero nonce
-     * restores the replay this field exists to remove. */
+    /* Fresh per attempt, refused rather than sent as zero: zero restores the replay.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (pairing_new_nonce(p) != 0)
         return -23;
     build_request(p, res->superframe, frame);
@@ -385,20 +356,16 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         stats.rsp_timeout++;
         return -12;
     }
-    /* "A frame of the response type arrived", NOT "a valid PAIR_RSP arrived" -
-     * the ids, the point and the confirmation are all still ahead. */
+    /* A frame of the response type, NOT a valid PAIR_RSP: three checks are still ahead.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     stats.rsp_heard++;
     stats.rsp_len     = info.len;
     stats.rsp_rssi_dbm = info.rssi_dbm;
     stats.rsp_type    = info.len > 0u ? rx[0] : 0u;
     stats.rsp_version = info.len > 1u ? rx[1] : 0u;
 
-    /* res->superframe, not beacon.superframe. The request carries the first and
-     * the salt and transcript must hash the same number - and on the invited
-     * path the beacon struct is never filled at all. Changing where the request
-     * gets its value and not where the transcript gets it produced a confirm
-     * failure with every check before it passing, because every check before it
-     * is about the frame rather than about agreeing on a number. */
+    /* res->superframe: salt and transcript must hash the number the request carried.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     rc = handle_response(p, res, rx, info.len, &keys);
     if (rc != 0)
         return rc;
@@ -424,17 +391,16 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
     memset(&keys, 0, sizeof(keys));
     if (rc == 0 && store_save_pairing(res->session, res->hop_key, res->slot,
                                       res->report_every) != 0) {
-        /* Reported, not swallowed: the exchange did work and the keys are live
-         * in RAM, but a reset from here is an unpaired device that an operator
-         * has to visit. */
+        /* Reported, not swallowed: a reset from here is an unpaired device someone visits.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         stats.store_failed++;
         return -13;
     }
     return rc;
 }
 
-/* One fact, one source. `join show` reading RAM while `join_run` read flash is
- * how an operator concludes a device is not paired when it is. */
+/* One fact, one source: RAM against flash is how a paired device reads unpaired.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 int join_restore(join_result_t *res) {
     store_state_t st;
     if (store_init(&st) != 0 || !st.valid || st.report_every == 0u)
@@ -452,8 +418,8 @@ int join_restore(join_result_t *res) {
     return 1;
 }
 
-/* Same rendezvous, same channel, only the length varies - an untimed frame meets
- * the hub's 5% window one time in twenty and reads as a failure. */
+/* Same rendezvous and channel, only length varies: untimed meets the window 1 in 20.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 int join_run(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms) {
     return join_run_ex(p, res, timeout_ms, NULL, 0u);
 }
@@ -478,12 +444,12 @@ int join_probe(uint8_t len, uint32_t timeout_ms, uint32_t *air_us,
         return rc;
 
     uint32_t t_beacon = micros();
-    /* Outside the protocol's type space deliberately: the hub must count this at
-     * sync and CRC and refuse it above, never mistake it for a frame to act on. */
+    /* Outside the protocol's type space: counted at sync and CRC, refused above.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     frame[0] = JOIN_PROBE_TYPE;
     frame[1] = RADIO_PROTO_VERSION;
-    /* Not a constant fill: with no whitening a run of equal bytes is what the
-     * bit slicer fails on, and that is the thing being measured. */
+    /* Not a constant fill: with no whitening, equal bytes are what the slicer fails on.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     for (uint8_t i = 2u; i < len; i++)
         frame[i] = (uint8_t)(i * 7u + 1u);
 
@@ -494,18 +460,8 @@ int join_probe(uint8_t len, uint32_t timeout_ms, uint32_t *air_us,
     return 0;
 }
 
-/* The accept path against the hub's published frame, before any of it goes near
- * a radio. This is the first frame the device will ever open, its body is 19
- * bytes - not a multiple of four - and it carries the key the whole network
- * hops on, so a length or offset error here costs the channel plan rather than
- * one frame.
- *
- * The three cleartext frames are covered too, now that the hub emits them as C:
- * the request and confirmation this side *builds* are compared against the
- * hub's bytes, and the response is parsed from the hub's bytes with the real
- * two-term ECDH on the PKA. A builder checked against a frame this side
- * assembled agrees with its own mistakes - which is how the grant length got
- * past me. */
+/* The accept path against the hub's published frame, before any of it meets a radio.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 int join_selftest(join_selftest_t *r) {
     join_result_t res;
     exchange_keys_t keys;
@@ -528,9 +484,8 @@ int join_selftest(join_selftest_t *r) {
     r->grant_ok  = res.slot == 0u && res.report_every == RADIO_REPORT_EVERY_DEFAULT;
     r->hop_key_ok = memcmp(res.hop_key, PV_NET_HOP_KEY, sizeof(PV_NET_HOP_KEY)) == 0;
 
-    /* One flipped tag byte must be refused, and refused as a tag failure rather
-     * than as a malformed frame - the two counters are what tell an operator
-     * whether the air or the key is wrong. */
+    /* Refused as a tag failure, not as a malformed frame: two counters, two causes.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     memcpy(bad, PV_FRAME_ACCEPT, sizeof(bad));
     bad[sizeof(bad) - 1] ^= 0x01u;
     r->forged_rejected = handle_accept(&res, bad, sizeof(bad), &keys) == -10;
@@ -542,8 +497,8 @@ int join_selftest(join_selftest_t *r) {
 
     r->confirm_ok = exchange_confirm_equal(PV_CONFIRM_HUB, keys.confirm_hub) == 1;
 
-    /* The published identity, so the two scalar multiplications run for real
-     * and Z is reproduced rather than supplied. */
+    /* The published identity, so both scalar multiplications run and Z is reproduced.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     pairing_ctx_t vp;
     memset(&vp, 0, sizeof(vp));
     memcpy(vp.priv, V_DEV_PRIV, sizeof(vp.priv));
@@ -562,8 +517,8 @@ int join_selftest(join_selftest_t *r) {
         exchange_keys_t vkeys;
         memset(&vres, 0, sizeof(vres));
         memcpy(vres.hub_static, V_HUB_PUB_C, sizeof(vres.hub_static));
-        /* The whole response path on the hub's own bytes: point validity, the
-         * two ECDH, the transcript, the schedule, and its confirmation. */
+        /* The whole response path on the hub's bytes: points, both ECDH, transcript, schedule.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         vres.superframe = PAIR_REQ_SUPERFRAME;
         r->rsp_parsed_ok = handle_response(&vp, &vres, PV_FRAME_RSP,
                                            sizeof(PV_FRAME_RSP), &vkeys) == 0;
@@ -574,8 +529,8 @@ int join_selftest(join_selftest_t *r) {
         } else {
             r->conf_built_ok = 2u;      /* not reached, which is not a failure */
         }
-        /* A response carrying the hub's static key as its ephemeral, refused
-         * for that one reason and not because the confirmation fails. */
+        /* Refused for the static ephemeral alone, not because the confirmation fails.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         uint8_t swapped[sizeof(PV_FRAME_RSP)];
         memcpy(swapped, PV_FRAME_RSP, sizeof(swapped));
         memcpy(swapped + offsetof(radio_pair_rsp_t, eph_pubkey), V_HUB_PUB_C, 33);

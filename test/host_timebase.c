@@ -1,5 +1,5 @@
-/* A settable clock, so the beacon rules can be tested at speed and at the
- * counter wrap - neither of which a bench run reaches. */
+/* A settable clock: the beacon rules at speed and at the counter wrap.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include <stdint.h>
 
 static uint32_t now_us;
@@ -13,8 +13,7 @@ uint8_t timebase_elapsed(uint32_t deadline) {
 void host_clock_set(uint32_t us) { now_us = us; }
 void host_clock_advance(uint32_t us) { now_us += us; }
 
-/* The CPU-time accounting is a device instrument; on the host it only has to
- * link. Stubbed here rather than #ifdef'd into load.c, so the firmware has no
- * host-only branch in it. */
+/* Stubbed here, not #ifdef'd into load.c: the firmware carries no host-only branch.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 void load_enter(int bucket) { (void)bucket; }
 void load_exit(int bucket) { (void)bucket; }

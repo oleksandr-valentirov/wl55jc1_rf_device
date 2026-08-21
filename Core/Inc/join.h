@@ -6,58 +6,30 @@
 #include "pairing.h"
 #include "pair_init.h"
 
-/* The four-frame pairing exchange, device side.
- *
- * JOIN_BEACON (hub) -> PAIR_REQ -> PAIR_RSP (hub) -> PAIR_CONF -> PAIR_ACCEPT.
- * All of it on the fixed join channel: an unpaired device has no key, so it
- * cannot follow the hop sequence. */
+/* The four-frame exchange, device side, all of it on the fixed join channel.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 
-/* How far ahead of the request's superframe a PAIR_ACCEPT may claim to be.
- *
- * The exchange runs inside one quiesce, so anything beyond it is either a
- * recording or a hub that lost the window. Cheap, checked before the tag, and
- * it does NOT make the exchange fresh - dev_nonce does that. Named as a window
- * rather than a replay check for exactly that reason. */
+/* A window, not a replay check: it bounds a recording, dev_nonce makes it fresh.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #define JOIN_ACCEPT_WINDOW_SF  8u
 
-/* Every stage counted apart, so a failure names itself instead of being "it did
- * not work". The one the hub cannot see from its side is rsp_heard: it
- * separates "never received PAIR_RSP" from "received it and refused it", and
- * the hub's req/rsp counters look identical in both cases. */
+/* Every stage counted apart, so a failure names itself.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 typedef struct {
     uint32_t beacon_timeout;     /* the receive window closed with nothing in it */
-    /* Something arrived and was not a join beacon this device could use. Split
-     * from silence for the same reason rsp_heard is: on the first attempt they
-     * were one counter, and "heard nothing" and "heard something wrong" are
-     * different problems with different next steps. */
-    uint32_t beacon_other;
-    /* A frame reached the demodulator and failed its CRC. On this part that is
-     * an interrupt and a return code; on the hub's SX1231 the same event is
-     * discarded in hardware and counts nowhere. The two parts do not fail
-     * symmetrically, so this counter is the only place a CRC disagreement can
-     * be seen from either side. Measured on the bench, not inferred. */
-    uint32_t beacon_crc_err;
+    uint32_t beacon_other;       /**< heard something that was not a usable join beacon */
+    uint32_t beacon_crc_err;     /**< the only side of the link where a CRC failure is visible */
     uint32_t rsp_crc_err;
     uint32_t accept_crc_err;
     uint8_t  last_len;           /* of whatever last landed, 0 if nothing */
     int16_t  last_rssi_dbm;
     uint8_t  last_type;
-    /* Which pair_init_rc_t refused the invitation, so -30 names its reason the
-     * way every other stage here does. */
-    uint8_t  invite_refused;
-    /* The response, recorded before it is judged. `rsp refused: frame` says
-     * length, type or version disagreed and could not say which - an
-     * instrument that only ran on the beacon path, so it could not describe a
-     * failure one frame later. Same shape as counting a CRC error as silence. */
-    uint8_t  rsp_len;
+    uint8_t  invite_refused;     /**< which pair_init_rc_t refused, so -30 names its reason */
+    uint8_t  rsp_len;            /**< the response as it arrived, recorded before it is judged */
     uint8_t  rsp_type;
     uint8_t  rsp_version;
     int16_t  rsp_rssi_dbm;
-    /* The hub retunes ~100 ms after its beacon, so the request has to be on air
-     * inside that. The relationship lives in the hub's code and nowhere in the
-     * shared contract, which is the same class as the PHY parameters. Measured
-     * here rather than assumed, because "well within" is not a number. */
-    uint32_t beacon_to_req_us;
+    uint32_t beacon_to_req_us;   /**< measured: the hub retunes ~100 ms after its beacon */
     uint32_t beacon_closed;      /* heard, but the operator's window is not open */
     uint32_t req_sent;
     uint32_t rsp_timeout;        /* nothing at all arrived */
@@ -107,8 +79,8 @@ int  join_run_invited(pairing_ctx_t *pair, join_result_t *out,
                       uint32_t timeout_ms, const pair_init_ctx_t *ic,
                       uint32_t ceiling);
 
-/* A length sweep, not a pairing attempt: it carries no identity and the hub
- * cannot act on it, so only the PHY layers below the type byte are exercised. */
+/* A length sweep, not a pairing attempt: only the PHY below the type byte runs.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #define JOIN_PROBE_MAX   64u    /* the hub's RFM69 FIFO is 66 bytes */
 #define JOIN_PROBE_TYPE  0x7Eu
 /** @brief Times a request of a given length on air, without pairing. */
@@ -130,11 +102,7 @@ typedef struct {
     uint8_t confirm_ok;
     uint8_t req_built_ok;
     uint8_t rsp_parsed_ok;
-    /* 0 = wrong, 1 = matches, 2 = not reached because the response failed.
-     * A check that was never evaluated must not report as a failure: the
-     * mutation that swapped the transcript order made this read FAIL when it
-     * had simply not run. */
-    uint8_t conf_built_ok;
+    uint8_t conf_built_ok;       /**< 0 wrong, 1 matches, 2 not reached; never-ran is not FAIL */
     uint8_t eph_static_rejected;
     int     accept_rc;
     uint8_t nonce[12];

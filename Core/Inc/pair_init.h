@@ -4,11 +4,8 @@
 
 #include "radio_protocol.h"
 
-/* PAIR_INIT is the hub's addressed invitation to pair, and the only frame in
- * pair_v3 that pair_v2 did not have. It is authenticated with a key derived
- * from the two static keys, so a device that has been provisioned with the
- * hub's public key can tell an invitation from a bystander's frame - which the
- * cleartext join beacon it replaces could not. */
+/* The hub's addressed invitation, keyed from the two static keys.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 
 typedef enum {
     PAIR_INIT_OK = 0,

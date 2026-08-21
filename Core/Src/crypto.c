@@ -1,9 +1,5 @@
-/* Known-answer tests for the WL55's crypto silicon.
- *
- * The hub and this device share a wire format, not code, so the only thing that
- * makes them interoperate is both sides matching the specification. These tests
- * check the hardware against host-generated vectors rather than against the HAL,
- * which is what turns "the datasheet says GCM" into evidence. */
+/* Known-answer tests for the WL55's crypto silicon, against host vectors not the HAL.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #include <string.h>
 
 #include "main.h"
@@ -19,8 +15,8 @@ extern RNG_HandleTypeDef  hrng;
 #define GCM_PT_LEN      (sizeof(vec_gcm_pt))
 #define GCM_BUF_WORDS   ((GCM_PT_LEN + 3u) / 4u)
 
-/* The PKA runs on its own; the core only blocks on it. Charged apart from AES
- * because it is time a scheduler could hand to something else, and AES is not. */
+/* Charged apart from AES: PKA time is time a scheduler could hand away.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #define PKA_TIMED(name, hal, argtype)                                          \
     static HAL_StatusTypeDef name(PKA_HandleTypeDef *h, argtype *a, uint32_t t) { \
         load_enter(LOAD_PKA);                                                  \
@@ -33,8 +29,8 @@ PKA_TIMED(pka_eccmul_timed, HAL_PKA_ECCMul, PKA_ECCMulInTypeDef)
 PKA_TIMED(pka_pointcheck_timed, HAL_PKA_PointCheck, PKA_PointCheckInTypeDef)
 PKA_TIMED(pka_modexp_timed, HAL_PKA_ModExp, PKA_ModExpInTypeDef)
 
-/* Key and IV go into KEYRx/IVRx as words, and those registers are not affected
- * by the DATATYPE swap that the payload goes through. Pack them explicitly. */
+/* Packed explicitly: KEYRx/IVRx are not subject to the DATATYPE swap.
+ * radio_devices_docs/wl55_device/security/README.md */
 static void pack_be(const uint8_t *src, uint32_t *dst, uint32_t words) {
     for (uint32_t i = 0; i < words; i++)
         dst[i] = ((uint32_t)src[4 * i] << 24) | ((uint32_t)src[4 * i + 1] << 16) |
@@ -55,10 +51,8 @@ static int gcm_configure(uint32_t *key, uint32_t *iv, uint32_t *aad, uint32_t aa
     return (HAL_CRYP_Init(&hcryp) == HAL_OK) ? 0 : -1;
 }
 
-/* One raw AES-128 block. DATATYPE_8B is the whole point: with 32-bit datatype
- * the accelerator takes a byte buffer word-wise, so the block it encrypts is
- * the buffer with every group of four bytes reversed - a different function
- * entirely, and one that still looks like AES from the calling code. */
+/* DATATYPE_8B: a 32-bit datatype reverses each group of four and still looks like AES.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 static int aes_ecb_block_inner(const uint8_t *key16, const uint8_t in[16], uint8_t out[16]) {
     uint32_t key[4];
 
@@ -90,9 +84,8 @@ int crypto_aes_ecb_block(const uint8_t *key16, const uint8_t in[16], uint8_t out
     return rc;
 }
 
-/* Runs the same block under both datatypes so the difference is measured on the
- * silicon rather than argued from the reference manual. Exists because a PRF
- * that disagrees between two ends has no symptom but silence. */
+/* The same block under both datatypes, measured on silicon rather than argued.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 int crypto_aes_ecb_datatype_probe(const uint8_t *key16, const uint8_t in[16],
                                   uint8_t out_8b[16], uint8_t out_32b[16]) {
     uint32_t key[4];
@@ -116,8 +109,8 @@ int crypto_gcm_kat(crypto_kat_result_t *r) {
     memset(r, 0, sizeof(*r));
     pack_be(vec_gcm_key, key, 4);
     pack_be(vec_gcm_iv, iv, 3);
-    /* GCM's J0 for a 12-byte IV is IV || 0x00000001, and the peripheral wants
-     * the counter already stepped to the first data block. */
+    /* J0 for a 12-byte IV is IV || 1, and the peripheral wants it already stepped.
+     * radio_devices_docs/wl55_device/security/README.md */
     iv[3] = 0x00000002u;
     memcpy(aad, vec_gcm_aad, sizeof(vec_gcm_aad));
 
@@ -190,8 +183,8 @@ int crypto_p256_kat(crypto_p256_result_t *r) {
     r->check_us  = micros() - t0;
     r->valid_ok  = (HAL_PKA_PointCheck_IsOnCurve(&hpka) == 1u);
 
-    /* An off-curve point is what an invalid-curve attack looks like on the wire,
-     * so the rejection path matters as much as the acceptance one. */
+    /* An off-curve point is what an invalid-curve attack looks like on the wire.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     memcpy(bad_qy, vec_p256_qy, sizeof(bad_qy));
     bad_qy[31] ^= 0x01u;
     chk.pointY = bad_qy;
@@ -201,22 +194,19 @@ int crypto_p256_kat(crypto_p256_result_t *r) {
     return 0;
 }
 
-/* The shared interop vectors. Included from the hub's tree rather than copied:
- * the whole point of the file is that both sides check the same bytes, and a
- * stale copy would fail exactly where a wire contract is supposed to hold. */
+/* Included from the hub's tree, never copied: both sides must check the same bytes.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #include "wire_v3.h"
 #include "sha256.h"
 
-/* Pin the set this code was written against. The hub's generator refuses to
- * rewrite a published set, but that protects its tree, not this build - a
- * bumped version arriving here should stop the compiler, not the radio. */
+/* Pinned: a bumped version arriving here should stop the compiler, not the radio.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 #if WIRE_VECTORS_VERSION != 3
 #error "wire vector set changed; re-check the device side against the new bytes"
 #endif
 
-/* One path for both directions: GCM encrypt and decrypt differ only in which
- * HAL call runs, and keeping them together stops the two from drifting apart in
- * how they set up the key, IV and header. */
+/* One path both directions, so key, IV and header setup cannot drift apart.
+ * radio_devices_docs/wl55_device/security/README.md */
 static int gcm_run_inner(const uint8_t *key16, const uint8_t *nonce12,
                    const uint8_t *aad, uint32_t aad_len,
                    const uint8_t *in, uint16_t len, uint8_t *out, uint8_t *tag,
@@ -230,10 +220,8 @@ static int gcm_run_inner(const uint8_t *key16, const uint8_t *nonce12,
     pack_be(key16, k, 4);
     pack_be(nonce12, iv, 3);
     iv[3] = 0x00000002u;
-    /* Both buffers are zeroed before the copy so a payload that is not a whole
-     * number of words leaves no stale bytes in the last block. GCM's GHASH sees
-     * that block, and on the decrypt path the HAL does not mask it for us -
-     * every length not divisible by four failed the tag until this was here. */
+    /* Zeroed before the copy: GHASH sees the final block and decrypt does not mask it.
+     * radio_devices_docs/wl55_device/security/README.md */
     memset(hdr, 0, sizeof(hdr));
     memset(ibuf, 0, sizeof(ibuf));
     memcpy(hdr, aad, aad_len);
@@ -279,8 +267,8 @@ int crypto_gcm_open(const uint8_t *key16, const uint8_t *nonce12,
     uint8_t computed[16];
     if (gcm_run(key16, nonce12, aad, aad_len, ct, len, pt, computed, 1) != 0)
         return -1;
-    /* Constant time: the comparison must not leak where a forged tag first
-     * differs, or an attacker recovers it a byte at a time. */
+    /* Constant time: where a forged tag first differs recovers it a byte at a time.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t diff = 0;
     for (int i = 0; i < 16; i++)
         diff |= (uint8_t)(computed[i] ^ tag[i]);
@@ -291,8 +279,8 @@ int crypto_gcm_open(const uint8_t *key16, const uint8_t *nonce12,
     return 0;
 }
 
-/* Big-endian compare, both 32 bytes. Constant time: this runs on secret
- * scalars, and an early exit leaks where they differ. */
+/* Constant time over secret scalars: an early exit leaks where they differ.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 static int be_less(const uint8_t *a, const uint8_t *b) {
     uint8_t lt = 0, gt = 0;
     for (int i = 0; i < 32; i++) {
@@ -332,8 +320,7 @@ static int scalar_mul(const uint8_t *scalar, const uint8_t *px, const uint8_t *p
     return 0;
 }
 
-/* 256-bit big-endian helpers. Only add, subtract and compare are needed here;
- * everything expensive goes to the PKA. */
+/* 256-bit big-endian helpers; everything expensive goes to the PKA. */
 static uint8_t be_add(const uint8_t *a, const uint8_t *b, uint8_t *out) {
     uint32_t carry = 0;
     for (int i = 31; i >= 0; i--) {
@@ -391,8 +378,8 @@ int crypto_p256_decompress(uint8_t prefix, const uint8_t *x, uint8_t *sec1_out) 
 
     if (prefix != 0x02u && prefix != 0x03u)
         return -1;
-    /* X is attacker supplied. It must be a field element, or the curve equation
-     * is being evaluated on something that is not one. */
+    /* X is attacker supplied and must be a field element before the curve equation runs.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     if (!be_less(x, p256_prime))
         return -2;
 
@@ -406,8 +393,8 @@ int crypto_p256_decompress(uint8_t prefix, const uint8_t *x, uint8_t *sec1_out) 
     if (mod_exp(t, p256_sqrt_exp, y) != 0)
         return -1;
 
-    /* p = 3 mod 4 makes this a root when one exists; when none does, the value
-     * squares back to something else, so square it and check rather than trust. */
+    /* p = 3 mod 4 gives a root only when one exists, so square it back and check.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t check[32];
     if (mod_exp(y, (const uint8_t[32]){[31] = 2}, check) != 0)
         return -1;
@@ -432,14 +419,8 @@ int crypto_p256_public_from_private(const uint8_t *priv, uint8_t *pub_sec1) {
     return scalar_mul(priv, p256_gx, p256_gy, pub_sec1 + 1, pub_sec1 + 33);
 }
 
-/* SEIS latches on its own while the peripheral is idle and HAL_RNG_Generate
- * does not surface it, so a draw can return HAL_OK and not be random. Clear the
- * flag before drawing, test it and the live SECS after, and discard whatever was
- * already buffered because it predates the clear and nothing has vouched for it.
- *
- * This sits under the device's long-term private key, which is the one draw in
- * the system where a silent failure is unrecoverable: it is persisted, and every
- * session key and hop key for the life of the device derives from it. */
+/* SEIS latches while idle and HAL_RNG_Generate still returns HAL_OK.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 int crypto_rng_word(uint32_t *out) {
     for (int tries = 0; tries < 4; tries++) {
         uint32_t stale = 0;
@@ -461,16 +442,14 @@ int crypto_rng_health(uint32_t *sr) {
 }
 
 int crypto_p256_keygen(uint8_t *priv, uint8_t *pub_sec1) {
-    /* Rejection sampling. A scalar outside [1, n-1] is not a private key, and
-     * clamping into range would bias it - the bias is the attack. */
+    /* Rejection sampling: clamping into range would bias it, and the bias is the attack.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     for (int tries = 0; tries < 16; tries++) {
         for (int i = 0; i < 8; i++) {
             uint32_t w = 0;
             if (crypto_rng_word(&w) != 0) {
-                /* Zero the whole scalar, not just the rest. A caller that misses
-                 * the return must get an obviously broken key rather than one
-                 * that is part fresh entropy and part whatever the stack held -
-                 * a plausible key nothing downstream can tell from a real one. */
+                /* The whole scalar: part-fresh, part-stack is a plausible key nothing can spot.
+                 * radio_devices_docs/wl55_device/security/self-tests.md */
                 memset(priv, 0, 32);
                 return -1;
             }
@@ -493,8 +472,8 @@ int crypto_p256_ecdh(const uint8_t *priv, const uint8_t *peer_sec1, uint8_t *sha
     PKA_PointCheckInTypeDef chk = {0};
     uint8_t qy[32];
 
-    /* Validate before use, every time. An unvalidated peer point is an
-     * invalid-curve attack that recovers the private key. */
+    /* Validate before use, every time: an unvalidated point recovers the private key.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     if (peer_sec1[0] != 0x04u)
         return -1;
     chk.modulusSize = sizeof(p256_prime);
@@ -527,8 +506,8 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
     memset(r, 0, sizeof(*r));
     uint32_t t0 = micros();
 
-    /* The point arrives as SEC1 0x04 || X || Y, so validate before touching it -
-     * an unchecked point is an invalid-curve attack, not a formatting nit. */
+    /* SEC1 0x04 || X || Y, validated before it is touched.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     chk.modulusSize = sizeof(p256_prime);
     chk.coefSign    = 1;
     chk.coefA       = p256_abs_a;
@@ -578,8 +557,8 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
     r->cipher_ok = (memcmp(cipher, V_CIPHER, sizeof(V_CIPHER)) == 0);
     r->tag_ok    = (memcmp(tag, V_TAG, sizeof(V_TAG)) == 0);
 
-    /* Round-tripping the vector proves the open path against the same bytes,
-     * and that a flipped tag is actually rejected rather than merely noticed. */
+    /* Proves the open path against the same bytes, and that a flipped tag is rejected.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t plain[sizeof(V_PLAIN)];
     r->open_ok = (crypto_gcm_open(V_KEY_SESSION0, V_NONCE, V_AAD, sizeof(V_AAD),
                                   V_CIPHER, sizeof(V_CIPHER), plain, V_TAG) == 0) &&
@@ -590,9 +569,8 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
     r->forge_rejected = (crypto_gcm_open(V_KEY_SESSION0, V_NONCE, V_AAD, sizeof(V_AAD),
                                          V_CIPHER, sizeof(V_CIPHER), plain, bad_tag) == -2);
 
-    /* 23 bytes, deliberately not a whole number of words. The v1 payload is 24
-     * and therefore block aligned, so it passed throughout the week this path
-     * was broken for real frames. */
+    /* 23 bytes, not a whole number of words. The v1 payload was 24 and always passed.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t odd_ct[sizeof(V_ODD_PLAIN)], odd_tag[16], odd_pt[sizeof(V_ODD_PLAIN)];
     if (crypto_gcm_seal(V_KEY_SESSION0, V_ODD_NONCE, V_AAD, sizeof(V_AAD),
                         V_ODD_PLAIN, sizeof(V_ODD_PLAIN), odd_ct, odd_tag) != 0)
@@ -604,8 +582,8 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
                                       odd_pt, V_ODD_TAG) == 0) &&
                      (memcmp(odd_pt, V_ODD_PLAIN, sizeof(V_ODD_PLAIN)) == 0);
 
-    /* Point decompression, measured because the hub needs the number before it
-     * can decide whether compressed points are affordable at this end. */
+    /* Measured: the hub needs the number to decide whether compressed points fit here.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t decomp[P256_PUB_LEN];
     uint32_t td = micros();
     int drc = crypto_p256_decompress(vec_p256_prefix, vec_p256_qx, decomp);
@@ -618,25 +596,23 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
     r->decompress_parity_ok =
         (crypto_p256_decompress((uint8_t)(vec_p256_prefix ^ 1u), vec_p256_qx, other) == 0) &&
         (memcmp(other + 33, vec_p256_qy, 32) != 0);
-    /* An X whose curve equation is a non-residue is not a point and must be
-     * refused. Flipping a bit of a good X is not a test - roughly half of all
-     * field elements are valid x-coordinates, so it would pass by chance. */
+    /* A genuine non-residue: half of all field elements are valid x, so a flip passes.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     int bad_rc = crypto_p256_decompress(0x02u, vec_p256_x_no_root, other);
     /* And an X that is not even a field element must go too. */
     int oob_rc = crypto_p256_decompress(0x02u, p256_prime, other);
     r->decompress_reject_ok = (bad_rc == -2) && (oob_rc == -2);
 
-    /* The shared compressed vectors. Checking decompression against the hub's
-     * bytes rather than my own arithmetic is the point: agreeing with myself
-     * proves nothing about agreeing with the other end. */
+    /* The hub's bytes, not my own arithmetic: agreeing with myself proves nothing.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t shared_pub[P256_PUB_LEN];
     r->shared_decomp_ok =
         (crypto_p256_decompress(V_DEV_PUB_C[0], V_DEV_PUB_C + 1, shared_pub) == 0) &&
         (memcmp(shared_pub + 1, V_DEV_PUB_X, 32) == 0) &&
         (memcmp(shared_pub + 33, V_DEV_PUB_Y, 32) == 0);
 
-    /* Stronger than comparing Y: run the ECDH on the decompressed point and
-     * check the secret still comes out right. A wrong Y cannot survive this. */
+    /* ECDH on the decompressed point: a wrong Y cannot survive that, a Y compare can.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t x_from_c[32];
     r->decomp_ecdh_ok =
         (crypto_p256_ecdh(V_HUB_PRIV, shared_pub, x_from_c) == 0) &&
@@ -655,13 +631,8 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
 #include "pair_v2.h"
 #include "hop_vectors.h"
 
-/* pair_v2 on this silicon: the key schedule against the published values, and
- * the two sealed frames opened through CRYP.
- *
- * The host test already proves the schedule. This proves the same bytes come
- * out of *this* SHA-256 and this accelerator - and PAIR_ACCEPT's 19-byte body
- * is the first frame the device will ever open at a length that is not a
- * multiple of four, which is exactly what HAL_CRYP_Decrypt gets wrong. */
+/* pair_v2 on this silicon: the schedule, and the two sealed frames through CRYP.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
 int crypto_pair_kat(crypto_pair_result_t *r) {
     uint8_t salt[EXCHANGE_SALT_LEN];
     uint8_t transcript[EXCHANGE_TRANSCRIPT_LEN];
@@ -684,8 +655,8 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
     r->confirm_hub_ok = memcmp(k.confirm_hub, PV_CONFIRM_HUB, 16) == 0;
     r->confirm_dev_ok = memcmp(k.confirm_dev, PV_CONFIRM_DEV, 16) == 0;
 
-    /* 19 bytes: three past a word boundary, and the tag is what catches a
-     * decrypt that left the unused bytes of the final word unmasked. */
+    /* 19 bytes, three past a word boundary; the tag is what catches the unmasked word.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     memset(buf, 0, sizeof(buf));
     r->accept_open_ok =
         crypto_gcm_open(PV_KEY_SESSION, PV_ACCEPT_NONCE,
@@ -696,8 +667,8 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
                                         + sizeof(PV_ACCEPT_PLAIN)) == 0 &&
         memcmp(buf, PV_ACCEPT_PLAIN, sizeof(PV_ACCEPT_PLAIN)) == 0;
 
-    /* The hop key is the last 16 bytes of that plaintext, so a length or offset
-     * error inside PAIR_ACCEPT costs the whole network's channel plan. */
+    /* The hop key is the last 16 bytes: an offset error costs the whole channel plan.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     r->hop_key_ok = memcmp(buf + 3, PV_NET_HOP_KEY, sizeof(PV_NET_HOP_KEY)) == 0;
 
     memcpy(tag, PV_FRAME_ACCEPT + sizeof(PV_ACCEPT_AAD) + sizeof(PV_ACCEPT_PLAIN), 16);
@@ -708,9 +679,8 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
                         PV_FRAME_ACCEPT + sizeof(PV_ACCEPT_AAD),
                         (uint16_t)sizeof(PV_ACCEPT_PLAIN), buf, tag) != 0;
 
-    /* The transmit direction too: a nonce or AAD assembled differently still
-     * decrypts its own output, so only sealing against the published bytes
-     * proves the assembly rather than the round trip. */
+    /* Sealing against published bytes proves the assembly; a round trip proves neither.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     uint8_t ct[sizeof(PV_UPLINK_PLAIN)];
     r->uplink_seal_ok =
         crypto_gcm_seal(PV_KEY_SESSION, PV_UPLINK_NONCE,
@@ -723,44 +693,22 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
     r->eph_static_rejected = exchange_eph_is_static(V_HUB_PUB_C, V_HUB_PUB_C) == 1 &&
                              exchange_eph_is_static(PV_HUB_EPH_PUB, V_HUB_PUB_C) == 0;
 
-    /* Leave CRYP hostile, then open the frame again.
-     *
-     * The hop PRF and the frame cipher share this peripheral, and a user that
-     * sets only the fields it cares about inherits the rest. Inherited settings
-     * do not fail: a wrong DataWidthUnit encrypts four bytes and zero-fills
-     * twelve, which is a perfectly good block under a configuration nobody
-     * chose - and a permutation built from it is still a permutation. Every
-     * user here writes the whole Init, and this is what checks that rather than
-     * trusting it. The hub found both variants of this the hard way.
-     *
-     * The ECB half is compared against a host AES, not against this peripheral's
-     * own earlier output. Two runs under the same wrong configuration agree with
-     * each other perfectly - which is the round-trip trap one layer down, and
-     * the first version of this check fell into it. */
+    /* Leave CRYP hostile, then open again: inherited settings do not fail.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     hcryp.Init.DataType        = CRYP_DATATYPE_32B;
     hcryp.Init.DataWidthUnit   = CRYP_DATAWIDTHUNIT_WORD;
     hcryp.Init.HeaderWidthUnit = CRYP_HEADERWIDTHUNIT_WORD;
     hcryp.Init.Algorithm       = CRYP_AES_ECB;
     (void)HAL_CRYP_Init(&hcryp);
-    /* ECB first, and the order is the whole test. Written the other way round
-     * the GCM open re-initialised the peripheral before the ECB ran, so the
-     * ECB half never saw the hostile config and passed under a datatype it had
-     * stopped setting - a check defeated by the restoration it exists to
-     * verify. It read correctly and covered nothing. */
+    /* ECB first, and the order is the test: a GCM open re-initialises the peripheral.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     memset(buf, 0, sizeof(buf));
     r->after_misconfig_ok =
         crypto_aes_ecb_block(vec_hop_key, vec_hop_prf_in, buf) == 0 &&
         memcmp(buf, vec_hop_prf_out, sizeof(vec_hop_prf_out)) == 0;
 
-    /* FIPS-197 C.1. **This silicon is the anchor, not the host assert.**
-     *
-     * Both sides' generators call the same OpenSSL and neither of us read the
-     * standard - the value was transcribed from the other session's message -
-     * so the host check is one implementation agreeing with itself. What makes
-     * it evidence is that ST's AES block and the hub's reproduce it too.
-     *
-     * Both keys here are non-zero: reversing an all-zero key changes nothing,
-     * so a key-loading error cannot show under one. The hub hit that bug. */
+    /* FIPS-197 C.1: this silicon is the anchor, not the host assert.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
     memset(buf, 0, sizeof(buf));
     r->fips_ok = crypto_aes_ecb_block(vec_aes_fips_key, vec_aes_fips_in, buf) == 0 &&
                  memcmp(buf, vec_aes_fips_out, sizeof(vec_aes_fips_out)) == 0;

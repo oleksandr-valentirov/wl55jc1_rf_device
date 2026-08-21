@@ -6,20 +6,15 @@
 #include "sha256.h"
 #include "radio_protocol.h"
 
-/* Cleartext by necessity: these are the frames exchanged before a key exists.
- * Authentication does not come from the frame, it comes from the operator
- * having supplied the device's key fingerprint out of band. */
+/* Cleartext by necessity; authentication comes from the out-of-band fingerprint.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #define PAIR_TYPE_REQUEST   0x03u
 #define PAIR_TYPE_RESPONSE  0x04u
 /* The shared header owns it: see frame.h. */
 #define PAIR_VERSION        RADIO_PROTO_VERSION
 #define PAIR_NONCE_LEN      ((uint32_t)sizeof(((radio_pair_req_t *)0)->dev_nonce))
-/* 49 bytes, and the layout comes from radio_pair_req_t in the shared header
- * rather than from a local idea of it. This was 45 - a private layout with the
- * pubkey at offset 12, where the hub reads a superframe - so the two ends each
- * asserted their own length and agreed with themselves. The frame would have
- * been refused on length, which is a clean failure and an undiagnosable one:
- * pairing simply never works. */
+/* From radio_pair_req_t, never a local layout: 45 against 49 refused on length.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #define PAIR_FRAME_LEN      ((uint16_t)sizeof(radio_pair_req_t))
 
 typedef struct {

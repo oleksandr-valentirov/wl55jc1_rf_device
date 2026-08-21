@@ -1,9 +1,5 @@
-/* Console for standalone device bring-up.
- *
- * Same shape as the hub's shell: a dispatch table, bounded output, and RX from
- * the LPUART interrupt rather than a polling loop that drops characters. The
- * BSP already owns COM1 on LPUART1/PA2/PA3, which is where the ST-LINK virtual
- * COM port lands by default. */
+/* Console for device bring-up: dispatch table, bounded output, LPUART1 IRQ RX.
+ * radio_devices_docs/wl55_device/testing/console.md */
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -56,9 +52,8 @@ static uint8_t  cmd_len;
 static volatile uint8_t rx_buf[CLI_RX_LEN];
 static volatile uint8_t rx_head, rx_tail;
 
-/* The console is blocking at 115200, so a full response buffer costs tens of
- * milliseconds. Charged separately: it is a cost of the test rig, not of the
- * protocol, and leaving it in the totals would drown everything real. */
+/* Console time is charged separately: a cost of the rig, not of the protocol.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static void uart_tx(uint8_t *data, uint16_t len, uint32_t timeout) {
     load_enter(LOAD_CONSOLE);
     HAL_UART_Transmit(&hcom_uart[COM1], data, len, timeout);
@@ -209,9 +204,8 @@ static int cmd_radio(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "init") == 0) {
-        /* Bench is the default because the old one was grid slot 14, and a
-         * default that lands on the join channel is how bench traffic ends up
-         * there. A protocol slot is now something you have to ask for. */
+        /* Bench slot is the default; a protocol slot has to be asked for.
+         * radio_devices_docs/wl55_device/testing/console.md */
         int want_bench = (argc < 3) || strcmp(argv[2], "bench") == 0;
         if (!want_bench)
             radio_slot = (uint8_t)atoi(argv[2]);
@@ -244,8 +238,8 @@ static int cmd_radio(int argc, char **argv) {
         uint8_t len = (uint8_t)strlen(argv[2]);
         int rc = radio_send((const uint8_t *)argv[2], len, &air);
         if (rc == 0)
-            /* Not time on air: the ~10 ms TCXO start is in here and the PA is
-             * not keyed for it. Feeding this to a duty-cycle sum overstates it. */
+            /* Includes the TCXO ramp, so this is not time on air and not a duty-cycle term.
+             * radio_devices_docs/wl55_device/testing/console.md */
             out("sent %u bytes, %lu us from SetTx to TxDone (TCXO start included)\r\n",
                 len, (unsigned long)air);
         else if (rc == -4)
@@ -257,18 +251,15 @@ static int cmd_radio(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "beacon") == 0) {
-        /* A test pattern on the join channel is indistinguishable from the hub's
-         * join beacon to anyone's decoder, and it is the one channel a keyless
-         * device cannot look away from. Refuse rather than document. */
+        /* Refused: a test pattern on the join channel decodes as the hub's join beacon.
+         * radio_devices_docs/wl55_device/testing/console.md */
         if (!radio_bench_mode() && radio_slot == radio_join_slot()) {
             out("slot %u is the join channel - bench traffic goes on the bench "
                 "frequency. Run \"radio init\" first.\r\n", radio_slot);
             return 0;
         }
-        /* One 14-byte frame is 8.5 ms on air. At 1 Hz that is 0.85%, close
-         * enough to the 1% limit to fail a wideband measurement that also picks
-         * up someone else's traffic. Two seconds is 0.43% and matches the hub's
-         * superframe, so a capture looks like the real thing. */
+        /* Two seconds: 0.43% duty and the hub's superframe. 1 Hz is 0.85% and fails.
+         * radio_devices_docs/wl55_device/testing/console.md */
         int count = (argc >= 3) ? atoi(argv[2]) : 10;
         if (count < 1) count = 1;
         if (count > 60) count = 60;
@@ -354,8 +345,8 @@ static int cmd_radio(int argc, char **argv) {
                 return 0;
             }
         }
-        /* Errors are the point of the reading: too short a wait shows up as a
-         * PLL that never locked, not as a receiver that quietly hears less. */
+        /* Errors stay in the reading: they separate a dead PLL from a quieter receiver.
+         * radio_devices_docs/wl55_device/testing/console.md */
         uint16_t err = 0;
         radio_get_error(&err);
         out("tcxo startup %lu us  op_error 0x%04X%s%s\r\n",
@@ -365,9 +356,8 @@ static int cmd_radio(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "rxramp") == 0) {
-        /* Sweeping the requested timeout is the control: if the excess is the
-         * startup ramp it stays flat, and if it is anything proportional the
-         * model is wrong and the flat reading would have hidden that. */
+        /* Sweeping the timeout is the control: a startup ramp stays flat, anything else does not.
+         * radio_devices_docs/wl55_device/testing/console.md */
         static const uint32_t probe_us[] = {20000u, 40000u, 80000u, 160000u};
         for (unsigned i = 0; i < sizeof(probe_us) / sizeof(probe_us[0]); i++) {
             uint32_t span = 0;
@@ -389,8 +379,8 @@ static int cmd_radio(int argc, char **argv) {
         if (want < 1) want = 1;
         if (want > 40) want = 40;
 
-        /* Two frames to anchor on, because the sender's period is whatever its
-         * own loop produces - assuming 2 s would fold its error into the answer. */
+        /* Two frames: the sender's period is measured, never assumed to be 2 s.
+         * radio_devices_docs/wl55_device/testing/console.md */
         uint32_t anchor_us = 0, period = 0;
         for (int i = 0; i < 2; i++) {
             info.timeout_us = 8000000u;
@@ -411,8 +401,8 @@ static int cmd_radio(int argc, char **argv) {
         int32_t rssi_sum = 0;
         for (int i = 0; i < want; i++) {
             uint32_t predicted = anchor_us + period;
-            /* A generous tail keeps the window from being the thing measured:
-             * once the receiver is live it stays live well past the frame. */
+            /* A generous tail keeps the window from being the thing measured.
+             * radio_devices_docs/wl55_device/testing/console.md */
             info.timeout_us = lead + 20000u;
             int rc = radio_receive_at(rx, sizeof(rx), &info, predicted - lead);
             if (rc == 0) {
@@ -421,10 +411,8 @@ static int cmd_radio(int argc, char **argv) {
                 anchor_us = info.done_us;      /* re-anchor, so drift cannot accumulate */
                 continue;
             }
-            /* A frame that arrived and failed CRC is a different result from one
-             * that never arrived: it is the signature of a receiver that is
-             * marginal rather than absent, which is what a too-short oscillator
-             * wait would look like before it looks like silence. */
+            /* CRC failure and silence are different results: marginal receiver against absent one.
+             * radio_devices_docs/wl55_device/testing/console.md */
             if (rc == -3)
                 crc++;
             anchor_us = predicted;             /* dead reckon through a miss */
@@ -530,10 +518,8 @@ static int cmd_crypto(int argc, char **argv) {
         out("shared-decomp %s  decomp-ecdh %s  shared-reject %s\r\n",
             r.shared_decomp_ok ? "ok" : "FAIL", r.decomp_ecdh_ok ? "ok" : "FAIL",
             r.shared_reject_ok ? "ok" : "FAIL");
-        /* Naming what the set covers, not just its version. These session and
-         * hop keys come from a single-term ECDH; pairing derives from two and
-         * produces different keys, pinned in pair_v1. A self-test that passes
-         * while naming a contract that has moved is worse than a failing one. */
+        /* Names what the set covers, not just its version: these keys come from a one-term ECDH.
+         * radio_devices_docs/wl55_device/testing/console.md */
         out("vector set v%d (primitives: single-term ECDH)  %s\r\n",
             WIRE_VECTORS_VERSION, r.digest);
         out("pairing keys are two-term; see pair_v1\r\n");
@@ -568,24 +554,18 @@ static int cmd_crypto(int argc, char **argv) {
     return 0;
 }
 
-/* The vector's own identity and key, so a sealed frame here must come out byte
- * for byte equal to the shared vector - which is what proves the AAD and nonce
- * are assembled right, the one boundary where the two conventions meet. */
+/* Sealed here must equal the shared vector byte for byte: proves AAD and nonce assembly.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static pairing_ctx_t pair_ctx;
 static frame_ctx_t frame_ctx;
 static uint8_t     frame_ready;
 
-/* Latched on purpose: a flash that refuses one write will refuse the next, and
- * retrying it per pass turns one failure into thousands a second. */
+/* Latched: a flash that refuses one write refuses the next, and retrying floods.
+ * radio_devices_docs/wl55_device/arch/store.md */
 static uint8_t reserve_failed;
 
-/* The reserved window is [tx_floor, tx_mark). Extend it before the counter
- * reaches the ceiling, because past it nothing has been persisted and a reboot
- * would hand the same counters out again.
- *
- * The erase this can trigger stalls the core for 22 ms, which is longer than a
- * 19 ms uplink slot - so when this moves into the radio loop it has to be
- * scheduled clear of the transmit moment, not merely called often. */
+/* Extends [tx_floor, tx_mark) before the ceiling. Can erase: 22 ms.
+ * radio_devices_docs/wl55_device/arch/store.md */
 static int counter_topup(uint32_t sf) {
     uint32_t first, mark;
 
@@ -633,8 +613,8 @@ static int reserve_covers(uint32_t sf) {
     return reserve_known && (int32_t)(sf - reserve_ceiling) < 0;
 }
 
-/* One place that reports why a transmit was refused. A refusal nothing acts on
- * is decorative, and a zero-length seal result cannot say which rule stopped it. */
+/* One place reports why a transmit was refused.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int tx_gate(uint32_t sf) {
     counter_topup(sf);
     if (frame_tx_allowed(&frame_ctx, sf))
@@ -689,25 +669,23 @@ static int cmd_time(int argc, char **argv) {
     time_start();
 
     if (argc >= 2 && strcmp(argv[1], "beacon") == 0) {
-        /* Playing the hub, so the frame is built from the shared struct rather
-         * than a local copy - a private definition of this is what put the
-         * device out of step in the first place. */
+        /* Built from the shared struct, never a local copy.
+         * radio_devices_docs/wl55_device/testing/console.md */
         radio_data_beacon_t b;
         b.type       = RADIO_FRAME_DATA_BEACON;
-        /* A forgeable version too, so the forward-compatibility gate is shown
-         * to reject rather than assumed to. */
+        /* A forgeable version, so the forward-compatibility gate is shown to reject.
+         * radio_devices_docs/wl55_device/testing/console.md */
         b.version    = (argc >= 4) ? (uint8_t)atoi(argv[3]) : 2u;
         b.net_id     = 0x0001u;
         b.hub_id     = 0xA7C31E55u;
         b.flags      = 0u;
         b.resume_in  = 0u;
-        /* An explicit counter lets one board forge a beacon, so the refusal
-         * paths can be shown to work rather than assumed to. */
+        /* An explicit counter lets one board forge a beacon and take the refusal paths.
+         * radio_devices_docs/wl55_device/testing/console.md */
         uint32_t forged = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 10) : 0u;
         b.superframe = superframe_now(&sframe);
-        /* Transmit on the boundary, as the hub does. A beacon sent at an
-         * arbitrary moment makes the receiver's period measurement meaningless,
-         * because elapsed/frames is then not the period. */
+        /* On the boundary, as the hub does: off-boundary makes elapsed/frames not the period.
+         * radio_devices_docs/wl55_device/testing/console.md */
         while (!timebase_elapsed(sframe.next_boundary_us))
             ;
         b.superframe = forged ? forged : superframe_now(&sframe);
@@ -721,9 +699,8 @@ static int cmd_time(int argc, char **argv) {
     }
 
     if (argc >= 2 && strcmp(argv[1], "quiesce") == 0) {
-        /* Forging the announcement is the only way to exercise the device rules
-         * without the hub: the clamp, the gap and the sync guard are all refusal
-         * paths, and a path that is never taken is a path that does not work. */
+        /* Forging is the only way to take the clamp, gap and sync refusal paths without a hub.
+         * radio_devices_docs/wl55_device/testing/console.md */
         radio_data_beacon_t b;
         b.type       = RADIO_FRAME_DATA_BEACON;
         b.version    = 2u;
@@ -744,11 +721,8 @@ static int cmd_time(int argc, char **argv) {
     }
 
     if (argc >= 2 && strcmp(argv[1], "camp") == 0) {
-        /* A drifted device cannot re-acquire by computing a channel, because the
-         * computation is what drifted. The hop sequence is a Fisher-Yates
-         * permutation per cycle, so every channel carries exactly one data
-         * beacon per cycle of 28 - park on any one and the wait is bounded by a
-         * cycle whatever the error. No flash, no scan, no counter needed. */
+        /* Park and wait: every channel carries one data beacon per cycle, so the wait is bounded.
+         * radio_devices_docs/wl55_device/testing/console.md */
         uint8_t rx[32];
         radio_rx_info_t info = {0};
         uint8_t grid = (argc >= 3) ? (uint8_t)atoi(argv[2]) : 0u;
@@ -764,9 +738,8 @@ static int cmd_time(int argc, char **argv) {
             (unsigned)grid, (unsigned long)radio_slot_hz(grid),
             2u * HOP_VECTORS_COUNT - 1u);
         uint32_t t0 = micros();
-        /* Once per cycle bounds the count, not the gap: the permutation is
-         * redrawn each cycle, so a channel last in one and first in the next is
-         * 2*N-1 superframes apart. A one-cycle wait missed every other beacon. */
+        /* Two cycles: once per cycle bounds the count, not the gap, so the worst gap is 2N-1.
+         * radio_devices_docs/wl55_device/testing/console.md */
         info.timeout_us = (2u * (uint32_t)HOP_VECTORS_COUNT) * SUPERFRAME_US;
         if (radio_receive(rx, sizeof(rx), &info) != 0) {
             out("no data beacon in two full cycles - the hub is silent or this "
@@ -776,16 +749,13 @@ static int cmd_time(int argc, char **argv) {
         uint32_t waited = micros() - t0;
         uint32_t before = superframe_now(&sframe);
         uint32_t aligned = 0;
-        /* Measured before it is fixed: beacon_apply timestamps with its own
-         * micros(), which runs after GET_RXBUFFERSTATUS, ReadBuffer,
-         * GET_PACKETSTATUS and clear_irq. done_us was taken the instant the IRQ
-         * was seen. The gap is a systematic late offset on every alignment, and
-         * nothing on this board could see it. */
+        /* beacon_apply timestamps after the SPI reads; done_us is the IRQ instant.
+         * radio_devices_docs/wl55_device/radio/timebase.md */
         uint32_t stamp_lag = micros() - info.done_us;   /* measured 217-282 us */
         beacon_rc_t rc = beacon_apply(rx, info.len, &sframe, &quiesce, info.start_us, &aligned);
         if (rc != BEACON_OK) {
-            /* The verdict without the number makes the reader derive the sign,
-             * and the sign is where this went wrong. */
+            /* The number as well as the verdict: the sign is where this went wrong.
+             * radio_devices_docs/wl55_device/radio/timebase.md */
             out("heard %u bytes but rejected: %s (claimed %lu, %+ld from here)\r\n",
                 info.len, beacon_rc_name(rc), (unsigned long)sframe.refused_counter,
                 (long)sframe.refused_jump);
@@ -793,9 +763,8 @@ static int cmd_time(int argc, char **argv) {
         }
         beacon_rssi_dbm = info.rssi_dbm;
         beacon_rssi_valid = 1;
-        /* The cost, not the error: alignment uses done_us now, so this is what
-         * the grid is no longer charged. Kept because it is the number that
-         * would grow silently if the post-RxDone path ever gained work. */
+        /* The cost, not the error: what the grid is no longer charged since done_us.
+         * radio_devices_docs/wl55_device/radio/timebase.md */
         out("post-RxDone SPI %lu us, excluded from the alignment\r\n",
             (unsigned long)stamp_lag);
         /* Two estimates of one instant; the gap is wait_irq's poll latency. */
@@ -815,10 +784,8 @@ static int cmd_time(int argc, char **argv) {
     }
 
     if (argc >= 2 && strcmp(argv[1], "joinsync") == 0) {
-        /* A device that has just paired has no counter of its own. The join
-         * beacon carries one and is the only frame it can read without knowing
-         * the channel plan first. Aligned here, not after the exchange: five
-         * seconds of handshake is two superframes of error. */
+        /* Aligned here, before the exchange: five seconds of handshake is two superframes.
+         * radio_devices_docs/wl55_device/radio/timebase.md */
         uint8_t rx[32];
         radio_rx_info_t info = {0};
         radio_join_beacon_t b;
@@ -914,10 +881,8 @@ static int cmd_time(int argc, char **argv) {
         uint8_t rx[32];
         radio_rx_info_t info = {0};
         info.timeout_us = (argc >= 3) ? (uint32_t)atoi(argv[2]) * 1000u : 8000000u;
-        /* The data beacon is on the hop channel, which is a function of the
-         * counter - so this only works after the counter is aligned, and it
-         * says which channel it listened on rather than leaving silence
-         * ambiguous between "wrong channel" and "nothing transmitted". */
+        /* Needs an aligned counter, and says which channel it listened on.
+         * radio_devices_docs/wl55_device/testing/console.md */
         if (join_is_paired()) {
             uint8_t hch, hgrid;
             uint32_t sf_next = superframe_now(&sframe) + 1u;
@@ -1037,17 +1002,15 @@ static int cmd_frame(int argc, char **argv) {
             out("not paired - run pair hub or pair device first\r\n");
             return 0;
         }
-        /* Both ends must agree on dev_id as well as the key: it goes into the
-         * nonce, so a mismatch there fails the tag exactly like a wrong key. */
+        /* dev_id goes into the nonce: a mismatch fails the tag exactly like a wrong key.
+         * radio_devices_docs/wl55_device/testing/console.md */
         frame_init(&frame_ctx, pair_ctx.session, pair_ctx.dev_id, pair_ctx.net_id);
         store_state_t st;
-        /* Store the key and clear the floor in one record. The key cannot be
-         * re-derived once the exchange ends, and the old floor belongs to a
-         * nonce space that no longer exists. */
+        /* Key and floor in one record: the old floor belongs to a dead nonce space.
+         * radio_devices_docs/wl55_device/arch/store.md */
         if (store_save_session(pair_ctx.session) != 0) {
-            /* Left unreported this would be the worst kind of safe: the key
-             * works until the next reset and the stale floor makes the device
-             * deaf to the hub it just paired with, with no symptom at all. */
+            /* Reported: the key works until the next reset, then the stale floor makes it deaf.
+             * radio_devices_docs/wl55_device/arch/store.md */
             out("could not persist the session key - refusing to install it. "
                 "It would work until the next reset and then be gone.\r\n");
             return 0;
@@ -1096,9 +1059,8 @@ static int cmd_frame(int argc, char **argv) {
     if (argc >= 3 && strcmp(argv[1], "send") == 0) {
         time_start();
         frame_ctx.superframe = superframe_now(&sframe);
-        /* Asked before building the frame, so the reason is reportable. A
-         * zero-length seal cannot say which rule stopped it, and "refused"
-         * without a reason is how a guard gets quietly disabled later. */
+        /* Asked before the frame is built, so the refusal reason survives.
+         * radio_devices_docs/wl55_device/testing/console.md */
         if (!tx_gate(frame_ctx.superframe))
             return 0;
         uint8_t len = (uint8_t)strlen(argv[2]);
@@ -1132,12 +1094,8 @@ static int cmd_frame(int argc, char **argv) {
         }
         uint8_t len = 0;
         uint32_t now = superframe_now(&sframe);
-        /* A frame sent just before a boundary arrives just after one, so the
-         * receiver cannot assume its own counter is the one that built the
-         * nonce. Trying a small window is safe - the sender still never repeats
-         * a nonce, and the replay check below still refuses anything that is
-         * not ahead. In the real protocol the slot schedule pins this; here
-         * there is no schedule, so the window stands in for it. */
+        /* A small window stands in for the slot schedule; the replay check still gates.
+         * radio_devices_docs/wl55_device/testing/console.md */
         static const int8_t window[] = {0, -1, 1};
         uint32_t sf = now;
         rc = -2;
@@ -1178,17 +1136,16 @@ static int cmd_frame(int argc, char **argv) {
 static void pair_show(void) {
     uint8_t fp[SHA256_LEN];
     uint8_t pk[P256_PUB_COMPRESSED_LEN];
-    /* Printed above the fingerprint because the fingerprint is derived from it:
-     * one of these is the operator's value and the other is a check on it, and
-     * showing them adjacent is what stops the two being confused. */
+    /* Adjacent to the value it checks, so the two are not confused.
+     * radio_devices_docs/wl55_device/testing/console.md */
     if (pairing_pubkey_c(&pair_ctx, pk, sizeof(pk))) {
         out("pubkey  ");
         for (unsigned i = 0; i < sizeof(pk); i++) out("%02X", pk[i]);
         out("\r\n");
     }
     if (pairing_fingerprint(&pair_ctx, fp, sizeof(fp))) {
-        /* All 32 bytes: the hub's `device add` refuses anything that is not
-         * exactly 64 hex digits, and a prefix would authenticate a prefix. */
+        /* All 32 bytes: a prefix would authenticate a prefix.
+         * radio_devices_docs/wl55_device/testing/console.md */
         out("fingerprint ");
         for (int i = 0; i < SHA256_LEN; i++) out("%02X", fp[i]);
         out("\r\n");
@@ -1202,8 +1159,8 @@ static void pair_show(void) {
     }
 }
 
-/* Identity comes off flash if it is there. Redrawing a keypair at every reset
- * makes a fingerprint useless as an identity, which is the whole point of it. */
+/* Identity comes off flash: a keypair redrawn per reset is not an identity.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static void pair_load_identity(void) {
     static uint8_t tried;
     store_state_t st;
@@ -1226,9 +1183,8 @@ static int cmd_store(int argc, char **argv) {
     if (argc >= 2 && strcmp(argv[1], "new") == 0) {
         uint8_t priv[P256_PRIV_LEN], pub[P256_PUB_LEN];
         uint32_t id = 0;
-        /* Ids are drawn, never assigned in sequence: a small id is mostly zero
-         * bytes in a cleartext header, and long zero runs are what whitening
-         * used to break up. Redraw until every byte differs from the others. */
+        /* Drawn, never sequential: a small id is long zero runs in a cleartext header.
+         * radio_devices_docs/wl55_device/testing/console.md */
         for (int i = 0; i < 32; i++) {
             if (radio_rng_word(&id) != 0) {
                 out("rng failed\r\n");
@@ -1255,12 +1211,8 @@ static int cmd_store(int argc, char **argv) {
         pair_show();
         return 0;
     }
-    /* `store ceiling <n>` is gone. It gave the durable ceiling its first writer,
-     * which it needed, and then wrote 500000 into a device whose live counter
-     * was 455000 - a value the live path could not have produced and that the
-     * monotonicity rule makes permanent. It cost an identity. `pair init
-     * listen` is the writer now, and it can only store a superframe that
-     * arrived inside a frame whose MAC verified. */
+    /* `store ceiling` is gone: it wrote a counter the live path could not produce.
+     * radio_devices_docs/wl55_device/testing/console.md */
     if (argc >= 2 && strcmp(argv[1], "counter") == 0) {
         /* The same door as the loop, or two ceilings disagree. */
         if (reserve_extend(superframe_now(&sframe)) != 0) {
@@ -1272,11 +1224,8 @@ static int cmd_store(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "selftest") == 0) {
-        /* A cost assertion, not a behaviour one. The append-point bug ran the
-         * right code and returned the right answer - it just reached it through
-         * a 22 ms page erase instead of a 97 us program. A test asserting the
-         * scanner's behaviour passed straight through it and retired the
-         * question. This asserts the price. */
+        /* A cost assertion: the append-point bug returned the right answer via a 22 ms erase.
+         * radio_devices_docs/wl55_device/arch/store.md */
         uint32_t first = 0, mark = 0, plain_max, torn_max;
         int ok = 1;
 
@@ -1296,9 +1245,8 @@ static int cmd_store(int argc, char **argv) {
         if (store_reserve_counter(0u, &first, &mark) != 0) ok = 0;
         torn_max = load_max_us(LOAD_FLASH);
 
-        /* An erase is ~22 ms and a program ~97 us, so anything in between is
-         * unambiguous. The threshold is not tuned - it just has to separate two
-         * numbers that differ by 200x. */
+        /* Erase ~22 ms against program ~97 us: the threshold only has to separate 200x.
+         * radio_devices_docs/wl55_device/arch/store.md */
         int erased = (torn_max > 5000u);
         out("selftest: reserve %lu us max, after a torn record %lu us max\r\n",
             (unsigned long)plain_max, (unsigned long)torn_max);
@@ -1337,10 +1285,8 @@ static int cmd_store(int argc, char **argv) {
     uint32_t legacy_dev = 0;
     int legacy = store_legacy_present(&legacy_dev);
     if (!st.valid) {
-        /* Reported here rather than beside a readable identity, which is the
-         * one case it cannot apply to: "never written" and "written in a format
-         * this build cannot read" are different facts with opposite answers,
-         * and only one of them is fixed by `store new`. */
+        /* Never written and unreadable are different facts; only one is fixed by `store new`.
+         * radio_devices_docs/wl55_device/arch/store.md */
         if (legacy)
             out("%d record(s) of the previous format, newest dev %08lX - "
                 "unreadable here, not absent; `store new` and re-enrol\r\n",
@@ -1355,9 +1301,8 @@ static int cmd_store(int argc, char **argv) {
             (unsigned long)st.dev_id, (unsigned long)st.counter_mark,
             (unsigned long)st.rx_floor, (unsigned long)st.key_gen);
     out("pair-init ceiling %lu (durable)\r\n", (unsigned long)st.init_ceiling);
-    /* 0 is "no beacon has named the network yet", which is a different fact
-     * from a hub whose id happens to be zero - one PAIR_INIT cannot be checked
-     * and the other can. Said, rather than printed as a bare number. */
+    /* 0 is said, not printed: no beacon named the network, against a hub id of zero.
+     * radio_devices_docs/wl55_device/testing/console.md */
     if (st.hub_id == 0u)
         out("network: not learned yet - no join beacon heard\r\n");
     else
@@ -1369,13 +1314,11 @@ static int cmd_store(int argc, char **argv) {
     return 0;
 }
 
-/* The published PAIR_INIT, through the live verify path rather than through a
- * second implementation of it. The Z1 seed is what makes that possible: without
- * it a vector check could only test the pieces, and the pieces are not where
- * these two firmwares disagree. */
+/* The published PAIR_INIT through the live verify path; the Z1 seed is what allows it.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static void pair_init_selftest(void) {
-    /* Vector's own identifiers, read out of its header rather than restated -
-     * a constant restated here is one this side defines for itself. */
+    /* Read out of the vector's header: a constant restated here is one this side owns.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     const pair_init_ctx_t ctx = {
         .dev_priv = NULL, .hub_static_c = NULL,
         .hub_id = (uint32_t)PV3_INIT_HEADER[4] | ((uint32_t)PV3_INIT_HEADER[5] << 8) |
@@ -1389,9 +1332,8 @@ static void pair_init_selftest(void) {
     uint32_t sf = 0;
 
     out("vectors %s digest %s\r\n", "pair_v3", PAIR_V3_VECTORS_DIGEST);
-    /* Both firmwares now compile the same define, so this no longer checks one
-     * side against the other. It checks the define against the pinned bytes -
-     * a shared constant and the vectors built from it can still disagree. */
+    /* Checks the shared define against the pinned bytes, which can still disagree.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     out("RADIO_PAIR_INIT_VERSION %u vs vector byte %u: %s\r\n",
         (unsigned)RADIO_PAIR_INIT_VERSION, (unsigned)PV3_INIT_HEADER[1],
         PV3_INIT_HEADER[1] == RADIO_PAIR_INIT_VERSION ? "ok" : "MISMATCH");
@@ -1404,8 +1346,8 @@ static void pair_init_selftest(void) {
     pair_init_forget();
     pair_init_test_seed_z1(PV3_INIT_Z1);
 
-    /* A hub the ctx has no key for: the seed stands in for the ECDH, and the
-     * prefix check must still see a provisioned key. */
+    /* The seed stands in for the ECDH; the prefix check still needs a provisioned key.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     pair_init_ctx_t c = ctx;
     static const uint8_t fake_hub[33] = { 0x02 };
     c.hub_static_c = fake_hub;
@@ -1416,8 +1358,8 @@ static void pair_init_selftest(void) {
         (unsigned long)sf,
         (rc == PAIR_INIT_OK && sf == PAIR_V3_INIT_SUPERFRAME) ? "ok" : "FAIL");
 
-    /* Immediately again: the rate limit, which is what an unauthenticated frame
-     * must not be able to spend. */
+    /* The rate limit: what an unauthenticated frame must not be able to spend.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     rc = pair_init_verify(&c, PV3_INIT_FRAME_NEXT_SF, sizeof(PV3_INIT_FRAME_NEXT_SF),
                           1u, sf, NULL);
     out("straight after: %s %s\r\n", pair_init_rc_name(rc),
@@ -1429,8 +1371,8 @@ static void pair_init_selftest(void) {
     out("replayed frame: %s %s\r\n", pair_init_rc_name(rc),
         rc == PAIR_INIT_REPLAY ? "ok" : "FAIL");
 
-    /* The next superframe's frame is a different length-class test only if it
-     * still passes: it is the control for the replay refusal above. */
+    /* The control for the replay refusal above: it must still pass.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     uint32_t sf2 = 0;
     rc = pair_init_verify(&c, PV3_INIT_FRAME_NEXT_SF, sizeof(PV3_INIT_FRAME_NEXT_SF),
                           60000u, sf, &sf2);
@@ -1438,10 +1380,8 @@ static void pair_init_selftest(void) {
         (unsigned long)sf2,
         (rc == PAIR_INIT_OK && sf2 == PAIR_V3_INIT_SUPERFRAME + 1u) ? "ok" : "FAIL");
 
-    /* The cross-reboot case, which is the one the durable ceiling exists for and
-     * the one every arm above misses: they all run after an acceptance has
-     * already happened in this session. `forget` drops exactly the RAM state a
-     * power cycle drops, so the ceiling has to carry the refusal alone. */
+    /* The cross-reboot case: `forget` drops exactly the RAM state a power cycle drops.
+     * radio_devices_docs/wl55_device/arch/store.md */
     pair_init_forget();
     pair_init_test_seed_z1(PV3_INIT_Z1);
     rc = pair_init_verify(&c, PV3_INIT_FRAME, sizeof(PV3_INIT_FRAME),
@@ -1456,9 +1396,8 @@ static void pair_init_selftest(void) {
     out("flipped MAC:    %s %s\r\n", pair_init_rc_name(rc),
         rc == PAIR_INIT_BAD_MAC ? "ok" : "FAIL");
 
-    /* A device that has never heard the network: the ids come out of the frame
-     * and the MAC is the only thing judging them. Fresh state, so neither the
-     * rate limit nor the ceiling can be what makes this pass. */
+    /* Fresh state, so neither the rate limit nor the ceiling is what makes this pass.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     pair_init_forget();
     pair_init_test_seed_z1(PV3_INIT_Z1);
     pair_init_ctx_t blank = ctx;
@@ -1468,9 +1407,8 @@ static void pair_init_selftest(void) {
     out("network unknown: %s %s\r\n", pair_init_rc_name(rc),
         rc == PAIR_INIT_OK ? "ok" : "FAIL");
 
-    /* And the forger the adoption must not let in: same frame, one bit flipped
-     * in the hub id, so the salt changes and the MAC cannot survive it. This is
-     * the arm that says adoption is safe rather than merely permissive. */
+    /* One bit flipped in the hub id changes the salt: adoption is safe, not permissive.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     memcpy(bad, PV3_INIT_FRAME, sizeof(bad));
     bad[4] ^= 0x01u;
     pair_init_forget();
@@ -1481,11 +1419,8 @@ static void pair_init_selftest(void) {
 
     pair_init_stats_t st;
     pair_init_stats(&st);
-    /* Asserting the cost, not only the result: Z1 behind an unauthenticated
-     * frame is a 103 ms scalar multiply an attacker buys for 28 bytes. */
-    /* The old label read "seeded, so 0 is correct here" - true, and it explained
-     * away a zero from a counter that had never read otherwise, while the ECDH
-     * it counts had never once succeeded. Name the uncovered half instead. */
+    /* The cost: Z1 is a 103 ms scalar multiply an attacker buys for 28 bytes.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     out("Z1 derivations %lu - seeded throughout, so nothing above covers the "
         "ECDH; `pair init build` is where that path runs\r\n",
         (unsigned long)st.z1_derivations);
@@ -1494,14 +1429,12 @@ static void pair_init_selftest(void) {
 
 static int parse_hex(const char *in, uint8_t *out, uint32_t out_len);
 
-/* The device's own identity and the network it last heard named, which is
- * everything pair_init needs. Returns 0 if anything is missing rather than
- * filling a field with a plausible zero. */
+/* Returns 0 if anything is missing rather than filling a field with a plausible zero.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int pair_init_live_ctx(pair_init_ctx_t *c, store_state_t *st) {
     store_init(st);
-    /* hub_id 0 is allowed for listening: an invitation carries the ids inside
-     * its MAC salt, so a device that has never heard the network can still
-     * verify one. `build` needs them, and asks separately. */
+    /* hub_id 0 is allowed for listening: the ids are inside the MAC salt.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (!st->valid)
         return 0;
     c->dev_priv     = st->priv;
@@ -1519,10 +1452,8 @@ static int cmd_pair(int argc, char **argv) {
         uint8_t f[sizeof(radio_pair_init_t)];
 
         if (argc >= 3 && strcmp(argv[2], "build") == 0) {
-            /* Only this device can build an invitation addressed to itself: it
-             * needs Z1, which needs its own private key. That is what makes a
-             * bench control possible without the hub's private key - and what
-             * makes the frame a real one rather than a shaped-like-one. */
+            /* Only this device can build an invitation to itself: that needs Z1, so it needs the key.
+             * radio_devices_docs/wl55_device/radio/pairing.md */
             if (!pair_init_live_ctx(&c, &st) || c.hub_id == 0u) {
                 out("no identity, hub key or network yet\r\n");
                 return 0;
@@ -1581,13 +1512,8 @@ static int cmd_pair(int argc, char **argv) {
                 out("configure failed\r\n");
                 return 0;
             }
-            /* Keeps listening past frames that are not invitations. The join
-             * channel also carries the join beacon, and a receive that returns
-             * on the first frame can never see a PAIR_INIT behind one - which
-             * is not a silent hub, but reads exactly like one. */
-            /* Kept, because radio_receive overwrites info.timeout_us with
-             * whatever it was last given - the report quoted 2092 ms for a
-             * window that had run 59 s. */
+            /* Steps past non-invitations, and captures elapsed before radio_receive overwrites it.
+             * radio_devices_docs/wl55_device/testing/console.md */
             uint32_t window_us = info.timeout_us;
             uint32_t deadline = micros() + window_us;
             uint32_t others = 0;
@@ -1619,13 +1545,13 @@ static int cmd_pair(int argc, char **argv) {
             }
             if (rc != PAIR_INIT_OK)
                 return 0;
-            /* Only now, and only durably. A ceiling raised before the MAC would
-             * let one forged superframe lock out every genuine invitation. */
+            /* Only after the MAC: a ceiling raised before it locks out every genuine invitation.
+             * radio_devices_docs/wl55_device/radio/pairing.md */
             out("superframe %lu, ceiling %lu -> %s\r\n", (unsigned long)sf,
                 (unsigned long)ceiling,
                 store_save_init_ceiling(sf) == 0 ? "stored" : "FLASH REFUSED");
-            /* Learned only from a frame whose MAC verified, which is what makes
-             * taking them off the air safe rather than merely convenient. */
+            /* Learned only from a frame whose MAC verified.
+             * radio_devices_docs/wl55_device/radio/pairing.md */
             if (c.hub_id == 0u) {
                 uint32_t hub = (uint32_t)f[4] | ((uint32_t)f[5] << 8) |
                                ((uint32_t)f[6] << 16) | ((uint32_t)f[7] << 24);
@@ -1652,9 +1578,8 @@ static int cmd_pair(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "salt") == 0) {
-        /* The vector's own ids, as integers rather than as the packed salt, so
-         * the little-endian-on-the-wire to big-endian-in-HKDF step is what is
-         * under test rather than a byte array that was already correct. */
+        /* Integers, not the packed salt: the little-endian to big-endian step is under test.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         uint8_t sess[16], hop[16];
         pairing_salt_check(V_ECDH_X, 0x33442211u, 0x0000002Au, sess, hop);
         out("salt from ids  session %s  hop %s\r\n",
@@ -1672,13 +1597,13 @@ static int cmd_pair(int argc, char **argv) {
         int as_hub = (strcmp(argv[1], "hub") == 0);
         uint32_t ms = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 10) : 20000u;
         pair_ctx.net_id = 0x0001u;
-        /* Mixed bits by construction: a small id gives long zero runs in the
-         * cleartext header, which is what whitening used to break up. */
+        /* Mixed bits by construction: a small id gives long zero runs in the header.
+         * radio_devices_docs/wl55_device/testing/console.md */
         pair_ctx.hub_id = 0xA7C31E55u;
         if (!as_hub) {
             pair_ctx.dev_id = 0x5B29D4A1u;
-            /* A third argument points the device at a different hub, so the
-             * addressing filter can be shown to reject rather than assumed to. */
+            /* A third argument points at a different hub, so the filter is shown to reject.
+             * radio_devices_docs/wl55_device/testing/console.md */
             if (argc >= 4)
                 pair_ctx.hub_id = (uint32_t)strtoul(argv[3], NULL, 16);
         }
@@ -1712,10 +1637,8 @@ static int cmd_pair(int argc, char **argv) {
     return 0;
 }
 
-/* Printed rather than checked, on purpose: this core has one build, so the
- * digests can only disagree with another board or with the hub. Reading them
- * out loud before a first pairing is a five-second check against an hour of
- * hunting a mismatch that presents as silence. */
+/* Printed, not checked: one build here, so a digest can only disagree elsewhere.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int cmd_vectors(int argc, char **argv) {
     vectors_report_t v;
     (void)argc; (void)argv;
@@ -1731,8 +1654,8 @@ static int cmd_vectors(int argc, char **argv) {
 
 static join_result_t join_res;
 
-/* Exactly 2*len digits or nothing. A hub key that parsed short would derive a
- * key against a prefix, which is the whole reason it is not allowed to. */
+/* Exactly 2*len digits or nothing: a short parse derives against a prefix.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int parse_hex(const char *s, uint8_t *out, uint32_t len) {
     if (s == NULL || strlen(s) != len * 2u)
         return -1;
@@ -1749,9 +1672,8 @@ static int parse_hex(const char *s, uint8_t *out, uint32_t len) {
     return 0;
 }
 
-/* A grant restored from flash printed the same line as one just negotiated, so
- * the success of an exchange was unreadable. The generation is what separates
- * them, and it lived in a different subsystem. */
+/* The generation separates a grant just negotiated from one restored from flash.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static void paired_line(void) {
     uint32_t gen = 0;
     out("paired: slot %u  report every %u  ", (unsigned)join_res.slot,
@@ -1795,9 +1717,8 @@ static int cmd_join(int argc, char **argv) {
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "invited") == 0) {
-        /* The v3 flow: wait for an addressed invitation and pair off the back
-         * of it. The exchange behind the trigger is byte for byte the v2 one -
-         * what changed is that a forged frame can no longer start it. */
+        /* The v3 flow: the exchange is byte for byte v2, but a forged frame cannot start it.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
         uint32_t ms = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 10) : 30000u;
         pair_init_ctx_t c = {0};
         store_state_t st;
@@ -1849,8 +1770,8 @@ static int cmd_join(int argc, char **argv) {
         out("built:");
         for (uint8_t i = 0; i < n; i++) out(" %02X", built[i]);
         out("\r\n");
-        /* The chip's own copy, so the SPI write is inside the comparison and a
-         * struct dump alone cannot exonerate it. */
+        /* The chip's own copy, so the SPI write is inside the comparison.
+         * radio_devices_docs/wl55_device/testing/console.md */
         if (radio_read_tx_buffer(chip, n) == 0) {
             out("chip :");
             for (uint8_t i = 0; i < n; i++) out(" %02X", chip[i]);
@@ -1917,8 +1838,8 @@ static int cmd_join(int argc, char **argv) {
             (unsigned long)s.accept_bad_frame,
             (unsigned long)s.accept_outside_window,
             (unsigned long)s.accept_bad_tag, (unsigned long)s.paired);
-        /* rsp_heard is the number the hub cannot infer: its counters read the
-         * same whether this end refused the response or never received it. */
+        /* The number the hub cannot infer: refused and never received read the same there.
+         * radio_devices_docs/wl55_device/testing/console.md */
         out("heard-but-refused is rsp_heard minus what follows it\r\n");
         return 0;
     }
@@ -1940,9 +1861,8 @@ static int cmd_join(int argc, char **argv) {
 
 static hop_ctx_t hopper;
 
-/* The vector key proves the algorithm; only the key from PAIR_ACCEPT answers
- * what the network is doing. Chosen in one place because two branches already
- * disagreed about it. */
+/* Chosen in one place: two branches had already disagreed about which key.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static const char *hop_live_key(void) {
     return join_res.paired ? "network" : "vector";
 }
@@ -1958,9 +1878,8 @@ static int hop_channel_live(uint32_t sf, uint8_t *ch) {
     return (hop_init_live() != 0) ? -1 : hop_channel(&hopper, sf, ch);
 }
 
-/* The hop sequence is the one contract whose failure mode is silence, so the
- * check is against host vectors and the mismatch path reports which convention
- * the other end used rather than leaving it to be guessed. */
+/* Reports which convention the other end used rather than leaving it guessed.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int cmd_hop(int argc, char **argv) {
     uint8_t ch, grid;
 
@@ -1997,8 +1916,8 @@ static int cmd_hop(int argc, char **argv) {
             grid_ok ? "ok" : "FAIL", disjoint_ok ? "ok" : "FAIL");
         out("vectors %s, %lu us\r\n", HOP_VECTORS_DIGEST, (unsigned long)us);
 
-        /* The claim that a 32-bit datatype silently changes the PRF, shown on
-         * this board's own accelerator rather than asserted. */
+        /* Shown on this board's accelerator: a 32-bit datatype silently changes the PRF.
+         * radio_devices_docs/wl55_device/testing/console.md */
         uint8_t block[16] = {0}, a8[16], a32[16], model[16];
         block[3] = 1;
         if (crypto_aes_ecb_datatype_probe(vec_hop_key, block, a8, a32) != 0) {
@@ -2036,9 +1955,8 @@ static int cmd_hop(int argc, char **argv) {
 
     uint32_t sf = (argc >= 2) ? (uint32_t)strtoul(argv[1], NULL, 10)
                               : superframe_now(&sframe);
-    /* The vector key proves the algorithm; only the key sealed into PAIR_ACCEPT
-     * answers what channel the network is on. Named on every line, because a
-     * channel from the wrong key is a plausible number nobody can spot. */
+    /* Named on every line: a channel from the wrong key is a plausible number.
+     * radio_devices_docs/wl55_device/testing/console.md */
     const char *key_name = hop_live_key();
     if (hop_init_live() != 0 || hop_channel(&hopper, sf, &ch) != 0) {
         out("prf failed\r\n");
@@ -2051,9 +1969,8 @@ static int cmd_hop(int argc, char **argv) {
     return 0;
 }
 
-/* Idle is what is left after everything accounted for, which is honest only
- * because the accounted paths are the ones that block. Anything unaccounted
- * shows up as idle, so treat this as a lower bound on load, not an upper one. */
+/* Idle is what is left over, so it is a lower bound on load and not an upper one.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int cmd_load(int argc, char **argv) {
     uint32_t window, busy = 0, recoverable = 0;
 
@@ -2107,10 +2024,8 @@ static int downlink_open_with(const uint8_t *f, uint8_t len, uint8_t my_slot,
                               const uint8_t *key, uint32_t dev,
                               radio_downlink_cmd_t *cmd);
 
-/* Both directions, one construction. The uplink half is pinned against
- * PV_FRAME_UPLINK, so sharing this makes the downlink's nonce verified by that
- * vector too - everything except the direction byte, which is the only thing
- * that may differ and the only thing keeping the two out of one nonce space. */
+/* One construction both ways; only the direction byte keeps the two nonce spaces apart.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static void frame_nonce(uint32_t sf, uint32_t dev, uint8_t dir, uint8_t slot,
                         uint8_t *nonce) {
     nonce[0] = (uint8_t)(sf >> 24);  nonce[1] = (uint8_t)(sf >> 16);
@@ -2121,9 +2036,8 @@ static void frame_nonce(uint32_t sf, uint32_t dev, uint8_t dir, uint8_t slot,
     nonce[9] = 0; nonce[10] = 0; nonce[11] = slot;
 }
 
-/* Assembly, split out so it can be checked against a published frame. Round
- * tripping a seal against my own open proves neither the header nor the nonce;
- * only PV_FRAME_UPLINK does. */
+/* Split out so it can be checked against a published frame, not against my own open.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int uplink_build(uint32_t sf, uint8_t slot, uint32_t dev,
                         const uint8_t *key, const radio_uplink_report_t *rep,
                         uint8_t *f) {
@@ -2183,22 +2097,13 @@ static int uplink_seal(uint32_t sf, uint8_t slot, uint32_t dev,
     return uplink_build(sf, slot, dev, key, rep, f);
 }
 
-/* Measured: SetTx to the first bit is the TCXO ramp, 24686 us keyed for a
- * 21.8 ms frame. Lead, not guard - see radio_slots.h.
- *
- * Aimed at the middle of the slot's slack, not at its start. The slack is all
- * after the frame (guard 1400, early 0), so landing at +235 us left 235 us
- * against a ramp that shortens and 1165 against one that lengthens - and the
- * ramp is measured while the lead is a constant, with nothing reconciling them.
- * A config change already moved this part's warm-up from 10.4 ms to 2.4 ms
- * once; on slot 0, early is the downlink region. */
+/* Lead, not guard: SetTx to first bit is 24686 us. Aimed mid-slack, all of which is late.
+ * radio_devices_docs/wl55_device/testing/console.md */
 #define UPLINK_AIM_US   700u    /* half the guard */
 #define UPLINK_LEAD_US  (2882u - UPLINK_AIM_US + 268u)  /* ramp - aim + SetTx lag */
 
-/* The device's own slot, once. The scheduling is the substance: the frame has to
- * start at the slot offset, on the channel the counter names, and the TCXO ramp
- * is lead time rather than guard - known in advance, so it is waited out early
- * instead of being charged to the guard band. */
+/* The device's own slot once: slot offset, counter's channel, and the ramp as lead time.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int cmd_uplink(int argc, char **argv) {
     radio_uplink_report_t rep;
 
@@ -2270,7 +2175,7 @@ static int cmd_uplink(int argc, char **argv) {
         return 0;
     }
     /* Kept across calls so `replay` re-sends the bytes that were actually sealed.
-     * A rebuilt frame would be a different superframe and prove nothing. */
+     * radio_devices_docs/wl55_device/testing/console.md */
     static uint8_t last_f[sizeof(radio_uplink_t)];
     static uint32_t last_sf;
     static uint8_t have_last;
@@ -2288,9 +2193,8 @@ static int cmd_uplink(int argc, char **argv) {
         return 0;
     }
     if (!superframe_can_schedule(&sframe)) {
-        /* Not `state`: that reports the last beacon ever heard, and a device
-         * nineteen minutes past one still read as aligned while its counter had
-         * walked 33 superframes off the grid. */
+        /* Not `state`, which reports the last beacon ever heard rather than a fresh one.
+         * radio_devices_docs/wl55_device/testing/console.md */
         out("refusing: counter is %s, %lu ms since a beacon, period %s\r\n",
             superframe_state_name(&sframe),
             (unsigned long)(superframe_since_beacon_us(&sframe) / 1000u),
@@ -2304,9 +2208,8 @@ static int cmd_uplink(int argc, char **argv) {
     uint32_t boundary = sframe.next_boundary_us;
     uint32_t slot_at  = boundary + hub_us_to_local(RADIO_SLOT_OFFSET_US(join_res.slot));
 
-    /* The channel is the live one, not the recorded frame's: an attacker holding
-     * a recording transmits it now, and a replay landing on a stale channel
-     * would test the receiver's tuning rather than its replay floor. */
+    /* The live channel: a stale one would test tuning rather than the replay floor.
+     * radio_devices_docs/wl55_device/testing/console.md */
     if (hop_channel_live(sf, &hop) != 0) {
         out("hop failed\r\n");
         return 0;
@@ -2320,8 +2223,8 @@ static int cmd_uplink(int argc, char **argv) {
     /* Zeroed first: an app_len off the stack is a length the hub would trust. */
     memset(&rep, 0, sizeof(rep));
     rep.rssi_down = beacon_rssi_valid ? beacon_rssi_dbm : 0;
-    /* Carried rather than replaced by a sentinel: the flag says the number is
-     * old, which a sentinel could not distinguish from a real -0 dBm. */
+    /* Flagged rather than replaced: a sentinel cannot be told from a real -0 dBm.
+     * radio_devices_docs/wl55_device/testing/console.md */
     rep.flags     = beacon_rssi_valid ? 0u : RADIO_REPORT_FLAG_RSSI_STALE;
     rep.supply_mv = 0;              /* no ADC on this build; 0 is not a reading */
     rep.uptime_s  = timebase_uptime_s();
@@ -2356,14 +2259,12 @@ static int cmd_uplink(int argc, char **argv) {
 
     uint32_t air = 0;
     int rc = radio_send(f, sizeof(f), &air);
-    /* `air` is SetTx to TxDone, so it contains the TCXO ramp as well as the
-     * frame. Subtracting the frame's own duration measures the ramp for this
-     * transmission rather than trusting UPLINK_LEAD_US. */
+    /* `air` is SetTx to TxDone, so subtracting the frame measures this ramp.
+     * radio_devices_docs/wl55_device/testing/console.md */
     uint32_t on_air_us = radio_air_time_us((uint8_t)sizeof(f));
     uint32_t ramp = (air > on_air_us) ? (air - on_air_us) : 0u;
-    /* Signed, and both instants: early is as wrong as late, and the one the
-     * slot grid cares about is the first bit, not the command that starts the
-     * oscillator. */
+    /* Signed, both instants: early is as wrong as late, and the grid wants the first bit.
+     * radio_devices_docs/wl55_device/testing/console.md */
     int32_t set_err   = (int32_t)(micros() - air - slot_at);
     int32_t first_bit = set_err + (int32_t)ramp;
     if (rc != 0) {
@@ -2383,8 +2284,8 @@ static int cmd_uplink(int argc, char **argv) {
         (unsigned long)air, (unsigned long)on_air_us, (unsigned long)ramp);
     out("SetTx %+ld us from the slot boundary, first bit %+ld us\r\n",
         (long)set_err, (long)first_bit);
-    /* The slot's whole slack sits after the frame: air 17600 + guard 1400. Early
-     * has no margin at all, and on slot 0 early is the downlink region. */
+    /* All the slack is late: air 17600 + guard 1400, early none. On slot 0 early is downlink.
+     * radio_devices_docs/wl55_device/testing/console.md */
     static uint32_t out_early, out_late;
     if (first_bit < 0)                                  out_early++;
     else if (first_bit > (int32_t)RADIO_SLOT_GUARD_US)  out_late++;
@@ -2402,9 +2303,8 @@ static int cmd_uplink(int argc, char **argv) {
 }
 
 
-/* The uplink's assembly with one byte changed, which is exactly why the
- * direction byte matters: same key, same superframe, same slot, and only that
- * byte keeps the two directions out of each other's nonce space. */
+/* The uplink's assembly with one byte changed, which is the byte that matters.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int downlink_open_with(const uint8_t *f, uint8_t len, uint8_t my_slot,
                               const uint8_t *key, uint32_t dev,
                               radio_downlink_cmd_t *cmd) {
@@ -2458,11 +2358,8 @@ static void downlink_apply(uint32_t sf, const radio_downlink_cmd_t *cmd) {
 }
 
 
-/* The window and the rate are contract; the contents are not, so this reports
- * bytes and refuses to interpret them. Built now because the geometry can be
- * exercised before anyone agrees what a downlink carries - and because a
- * receiver opened at the wrong offset or on the wrong parity hears an empty
- * region forever with nothing anywhere in error. */
+/* Reports bytes and refuses to interpret them: the window and rate are contract.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static int cmd_downlink(int argc, char **argv) {
     uint8_t rx[64];
     radio_rx_info_t info = {0};
@@ -2471,12 +2368,8 @@ static int cmd_downlink(int argc, char **argv) {
     uint32_t frames = (argc >= (wide ? 3 : 2))
                           ? (uint32_t)strtoul(argv[wide ? 2 : 1], NULL, 10) : 4u;
 
-    /* Re-align first rather than loosen the gate. A real device wakes, hears the
-     * beacon and then acts in the same superframe; a command that demands a
-     * fresh counter and does nothing to get one just moves the problem to the
-     * operator's typing speed. Attempted whenever a beacon has ever been heard:
-     * a second one is exactly what turns the stub period into a measured one,
-     * and if the channel guess is wrong the attempt costs one empty window. */
+    /* Re-aligns rather than loosening the gate; a wrong channel guess costs one window.
+     * radio_devices_docs/wl55_device/testing/console.md */
     if (!superframe_can_schedule(&sframe) && sframe.aligned) {
         uint8_t hop0, grid0;
         uint32_t sf0 = superframe_now(&sframe) + 1u;
@@ -2503,9 +2396,8 @@ static int cmd_downlink(int argc, char **argv) {
     }
     if (frames == 0u || frames > 32u) frames = 4u;
 
-    /* Where the hub's frames actually are, measured against my boundary, rather
-     * than whether they are where I expect. An empty region and a region I am
-     * pointed at wrongly look identical from inside the region. */
+    /* Where the frames are, measured against my boundary, not whether they are expected.
+     * radio_devices_docs/wl55_device/testing/console.md */
     if (wide) {
         for (uint32_t i = 0; i < frames; i++) {
             uint32_t sf = superframe_now(&sframe) + 1u;
@@ -2540,9 +2432,8 @@ static int cmd_downlink(int argc, char **argv) {
         uint32_t sf = superframe_now(&sframe) + 1u;
         uint32_t boundary = sframe.next_boundary_us;
         if (!RADIO_DOWNLINK_ON(sf)) {
-            /* Printed rather than skipped silently: which superframes carry one
-             * is contract, and a device on the wrong parity looks identical to
-             * a hub that is not transmitting. */
+            /* Printed, not skipped: wrong parity and a silent hub look identical.
+             * radio_devices_docs/wl55_device/testing/console.md */
             out("sf %lu: no downlink this superframe (parity)\r\n",
                 (unsigned long)sf);
             while (!timebase_elapsed(boundary + 1000u)) { }
@@ -2553,12 +2444,8 @@ static int cmd_downlink(int argc, char **argv) {
             out("hop/configure failed\r\n");
             return 0;
         }
-        /* Open EARLY, for the whole region. Starting the receiver exactly at the
-         * region boundary means the SX126x is still ramping while the hub's
-         * preamble goes past - measured: the frame is at +25 059 us and a
-         * receiver started at +25 000 hears nothing. Receive entry is lead time
-         * like the TCXO wait on transmit, not something the guard covers.
-         * Opening at +17 000 is clear of the beacon, which ends near +8 000. */
+        /* Open early, whole region: the frame is at +25 059 and a receiver at +25 000 hears none.
+         * radio_devices_docs/wl55_device/testing/console.md */
         while (!timebase_elapsed(boundary + RADIO_DOWNLINK_RX_OPEN_US
                                  - DOWNLINK_RX_LEAD_US)) { }
         info.timeout_us = RADIO_DOWNLINK_RX_CLOSE_US - RADIO_DOWNLINK_RX_OPEN_US
@@ -2573,9 +2460,8 @@ static int cmd_downlink(int argc, char **argv) {
             out("\r\n");
             if (orc == 0) {
                 downlink_apply(sf, &cmd);
-                /* An unknown cmd is a keepalive, not an error: a hub newer than
-                 * this device will send commands it does not know, and refusing
-                 * them stops the keepalive it does understand. */
+                /* An unknown cmd is a keepalive: refusing it stops the one this device understands.
+                 * radio_devices_docs/wl55_device/testing/console.md */
                 out("  opened: cmd %u%s  report_every %u  arg %u  hub_time %lu s\r\n",
                     cmd.cmd, cmd.cmd > RADIO_CMD_REJOIN ? " (unknown, ignored)" : "",
                     cmd.report_every, cmd.arg, (unsigned long)cmd.hub_time_s);
@@ -3214,8 +3100,8 @@ static void dispatch(void) {
 void CLI_Init(void) {
     rx_head = rx_tail = 0;
     cmd_len = 0;
-    /* Before anything can be asked what channel we are on: the grant lives in
-     * flash and a reset must not silently demote a paired device. */
+    /* The grant lives in flash: a reset must not silently demote a paired device.
+     * radio_devices_docs/wl55_device/arch/store.md */
     join_restore(&join_res);
     __HAL_UART_ENABLE_IT(&hcom_uart[COM1], UART_IT_RXNE);
     HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);

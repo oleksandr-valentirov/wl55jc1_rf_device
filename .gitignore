@@ -23,7 +23,6 @@ __pycache__/
 *.pyc
 .venv/
 
-# Host test binaries. The rule is the pattern, not one name: test_beacon was
-# listed alone and four others were tracked for weeks.
+# Host test binaries. The rule is the pattern, not one name.
 test/test_*
 !test/test_*.c

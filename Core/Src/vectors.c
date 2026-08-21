@@ -1,7 +1,5 @@
-/* Both hop headers name their digest HOP_VECTORS_DIGEST, so this file exists to
- * hold the one place they are included together. Captured and undefined rather
- * than renamed in either - the shared one is generated and published, and a
- * local build problem is not a reason to edit it. */
+/* The one place both hop headers are included, so the digest clash is contained.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include <string.h>
 
 #include "vectors.h"
@@ -18,9 +16,8 @@ void vectors_report(vectors_report_t *out) {
     out->hop_shared = HOP_VECTORS_DIGEST;
     out->hop_local  = local_hop_digest;
 
-    /* Values, not digests. Two digests from one header agree by construction;
-     * this compares the locally generated set against the hub's contract, which
-     * is the only thing on this core that can actually be wrong. */
+    /* Values, not digests: two digests from one header agree by construction.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     out->hop_local_matches_shared =
         memcmp(vec_hop_key, HV_HOP_KEY, sizeof(HV_HOP_KEY)) == 0 &&
         memcmp(vec_hop_prf_in, HV_PRF_IN, sizeof(HV_PRF_IN)) == 0 &&

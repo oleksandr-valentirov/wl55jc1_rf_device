@@ -1,9 +1,5 @@
-/* Time accounting for a superloop with no scheduler to ask.
- *
- * Nested, and each frame accumulates only its own time: the SPI reads that
- * wait_irq issues while polling are charged to SPI and subtracted from the
- * wait, so "waiting" and "talking to the radio while waiting" do not both
- * claim the same microseconds. */
+/* Time accounting for a superloop: nested, each frame charging only its own.
+ * radio_devices_docs/wl55_device/testing/console.md */
 #include "load.h"
 #include "timebase.h"
 
@@ -39,8 +35,8 @@ void load_reset(void) {
     last_us = window_start_us;
 }
 
-/* Charges everything since the last transition to whatever was running, which
- * is the frame on top - or to nobody, which is what idle means here. */
+/* Charges to the frame on top, or to nobody, which is what idle means here.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static void charge(uint32_t now) {
     if (depth > 0)
         stack[depth - 1].self_us += now - last_us;

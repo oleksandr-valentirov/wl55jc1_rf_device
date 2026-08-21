@@ -1,9 +1,5 @@
-/* The hop sequence as a contract, not as shared code.
- *
- * Both ends must land on the same channel or they never hear each other, and a
- * disagreement produces silence rather than an error - indistinguishable from a
- * dead radio. So this is written from the specification and checked against
- * host-generated vectors, exactly like the frame format. */
+/* The hop sequence as a contract: a disagreement is silence, not an error.
+ * radio_devices_docs/wl55_device/radio/hopping.md */
 #include <string.h>
 
 #include "hop.h"
@@ -14,8 +10,8 @@
 #define HOP_GRID_COUNT RADIO_GRID_COUNT
 #define HOP_JOIN_SLOT  RADIO_JOIN_SLOT
 
-/* The two ways this could plausibly have been written, kept computable rather
- * than tabulated so an unexpected channel can be named at any superframe. */
+/* Computable, not tabulated, so an unexpected channel can be named at any superframe.
+ * radio_devices_docs/wl55_device/radio/hopping.md */
 typedef enum {
     HOP_VARIANT_SPEC = 0,   /* counter big-endian, AES over the bytes */
     HOP_VARIANT_LE_COUNTER, /* counter little-endian */
@@ -35,10 +31,8 @@ int hop_init(hop_ctx_t *ctx, const uint8_t *key16, uint8_t count) {
     return 0;
 }
 
-/* Every group of four bytes reverses - which is what a little-endian core hands
- * the accelerator when a byte buffer is cast to words and DATATYPE does not
- * swap it back. Reproduced here so the effect can be demonstrated rather than
- * argued about from the reference manual. */
+/* What a little-endian core hands the accelerator when nothing swaps it back.
+ * radio_devices_docs/wl55_device/radio/hopping.md */
 static void swap32(uint8_t *b, uint32_t len) {
     for (uint32_t i = 0; i + 3u < len; i += 4u) {
         uint8_t t = b[i]; b[i] = b[i + 3u]; b[i + 3u] = t;
@@ -61,9 +55,8 @@ static int prf(const uint8_t *key, const uint8_t in[16], uint8_t out[16],
     return 0;
 }
 
-/* Two AES blocks give 32 bytes, enough to shuffle up to 64 channels. The cycle
- * number goes in big-endian: everything fed to the crypto layer is big-endian,
- * and this block is an AES input like any other. */
+/* Two blocks shuffle up to 64 channels; the cycle number is big-endian like any input.
+ * radio_devices_docs/wl55_device/radio/hopping.md */
 static int build_deck(const uint8_t *key, uint8_t count, uint32_t cycle,
                       hop_variant_t variant, uint8_t *deck) {
     uint8_t block[16];
@@ -108,9 +101,8 @@ int hop_channel(hop_ctx_t *ctx, uint32_t superframe, uint8_t *channel) {
         return -1;
     cycle = superframe / ctx->count;
     if (!ctx->valid || ctx->cycle != cycle) {
-        /* Cleared first: a deck left half-built by a failed PRF must never be
-         * served as if it were cached. It would still be a permutation, which
-         * is precisely why the failure would otherwise be invisible. */
+        /* Cleared first: a half-built deck is still a permutation, so the failure is invisible.
+         * radio_devices_docs/wl55_device/radio/hopping.md */
         ctx->valid = 0;
         if (build_deck(ctx->key, ctx->count, cycle, HOP_VARIANT_SPEC, ctx->deck) != 0)
             return -1;
@@ -140,9 +132,8 @@ const char *hop_identify(hop_ctx_t *ctx, uint32_t superframe, uint8_t observed) 
     return NULL;
 }
 
-/* Exposed so the datatype claim can be checked against the accelerator: this is
- * what a 32-bit datatype should turn one AES block into, computed the long way
- * with an 8-bit datatype and explicit swaps. */
+/* What a 32-bit datatype should do to one block, computed the long way with swaps.
+ * radio_devices_docs/wl55_device/radio/hopping.md */
 int hop_swap32_model(const uint8_t *key16, const uint8_t in[16], uint8_t out[16]) {
     return prf(key16, in, out, HOP_VARIANT_CRYP_WORDS);
 }

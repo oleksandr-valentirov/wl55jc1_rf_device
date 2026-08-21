@@ -1,9 +1,5 @@
-/* Sub-GHz radio: PHY profile shared with the hub, plus bring-up plumbing.
- *
- * The STM32WL radio is an SX126x core reached over an internal SPI, so there is
- * no wiring to get wrong - if it does not answer, the fault is configuration,
- * not soldering. The settings below mirror the hub's RFM69 profile register for
- * register, because the two have to demodulate each other, not merely work. */
+/* Sub-GHz radio: an SX126x core over an internal SPI, so a fault is configuration.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 #include <string.h>
 
 #include "main.h"
@@ -17,10 +13,8 @@
 extern SUBGHZ_HandleTypeDef hsubghz;
 extern RNG_HandleTypeDef hrng;
 
-/* Carrier, rate, deviation, sync word, CRC and the grid come from
- * Common/inc/radio_phy.h - the contract both sides compile, so a value defined
- * here would be one each side could be internally consistent about and still
- * disagree on. Only this part's opcode encodings are local. */
+/* From Common/inc/radio_phy.h; only this part's opcode encodings are local.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 
 #define XTAL_HZ                 32000000u
 
@@ -33,25 +27,18 @@ extern RNG_HandleTypeDef hrng;
 #define PACKET_VARIABLE_LEN     0x01u
 #define CRC_OFF                 0x01u
 #define CRC_2_BYTE              0x02u
-/* The SX1231/RFM69 transmits its CRC-16 inverted relative to this part's plain
- * two-byte mode. Seed and polynomial already agree - both default to 0x1D0F
- * over 0x1021 - so inversion is the only degree of freedom left, and it is the
- * one nothing on either side could observe: a CRC mismatch is discarded in
- * hardware and increments no counter anywhere. */
+/* The RFM69 inverts its CRC-16; a mismatch is discarded in hardware, counted nowhere.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 #define CRC_2_BYTE_INV          0x06u
 #define WHITENING_OFF           0x00u
 #define STDBY_RC                0x00u
 #define REGULATOR_DCDC          0x01u
 
-/* The 32 MHz reference on this board is a TCXO whose supply the radio itself
- * switches, so the chip cannot start its oscillator until it is told to power
- * it. 1.7 V is what the Nucleo fits. The timeout is in 15.625 us steps. */
+/* The radio switches the TCXO's own supply. 1.7 V, and the timeout is 15.625 us steps.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 #define TCXO_CTRL_1_7V          0x01u
-/* 2 ms. The reference design's 10 ms was never measured on this board and is the
- * whole of the RX entry latency; sweeping it found the link and the carrier
- * unchanged down to 500 us, so this keeps 4x margin over the lowest verified
- * setting. Cold start is the untested axis - TCXO settling is temperature
- * dependent and this bench is at room temperature. */
+/* 2 ms: 4x margin over the lowest verified sweep. Cold start is the untested axis.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 #define TCXO_STARTUP_STEPS      128u
 #define CALIBRATE_ALL           0x7Fu
 
@@ -72,10 +59,8 @@ extern RNG_HandleTypeDef hrng;
 /* Same four bytes the hub writes into RegSyncValue1..4. */
 static const uint8_t sync_word[RADIO_SYNC_BYTES] = RADIO_SYNC_WORD;
 
-/* Bench traffic gets its own frequency and its own sync word, agreed with the
- * hub session. Sharing either is not a collision risk but a diagnosis risk: a
- * matching sync word makes each side's decoder accept the other's frames, and
- * 866.5 MHz is the one channel a device with no key has no alternative to. */
+/* Its own frequency and sync word: sharing either is a diagnosis risk, not a collision.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 #define RADIO_BENCH_HZ          869500000u
 
 /* Wide enough for measured carrier error, narrow enough to stay in band. */
@@ -94,9 +79,8 @@ static int8_t tx_dbm = 14;
 
 static int configure(uint8_t slot, int want_bench);
 
-/* Settable so the 10 ms can be measured rather than inherited: it is the whole
- * of the RX entry latency and most of the TX ramp, and nothing on this board
- * says the Nucleo's TCXO actually needs that long. */
+/* Settable so it can be measured rather than inherited from the reference design.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 static uint32_t tcxo_steps = TCXO_STARTUP_STEPS;
 
 static int cmd_set(SUBGHZ_RadioSetCmd_t op, uint8_t *buf, uint16_t len) {
@@ -140,8 +124,8 @@ int radio_standby(void) {
 }
 
 int radio_rng_word(uint32_t *out) {
-    /* One checked implementation, in crypto.c, rather than two draws with
-     * different ideas about what a seed error means. */
+    /* One checked draw, in crypto.c, rather than two ideas of what a seed error means.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     return crypto_rng_word(out);
 }
 
@@ -170,26 +154,24 @@ int32_t radio_freq_offset(void) {
 }
 
 static int set_frequency(uint32_t hz) {
-    /* PLL step is XTAL/2^25; the multiply is done in 64 bits to keep the
-     * rounding honest at 865 MHz, where a 32-bit intermediate overflows. */
+    /* PLL step is XTAL/2^25; 64-bit, because a 32-bit intermediate overflows at 865 MHz.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     uint64_t raw = (((uint64_t)((int64_t)hz + freq_offset_hz)) << 25) / XTAL_HZ;
     uint8_t buf[4] = {(uint8_t)(raw >> 24), (uint8_t)(raw >> 16),
                       (uint8_t)(raw >> 8), (uint8_t)raw};
     return cmd_set(RADIO_SET_RFFREQUENCY, buf, sizeof(buf));
 }
 
-/* Leaving bench mode is a reconfiguration, not a retune. This cleared the flag
- * and changed only the frequency, so the radio sat on a protocol channel with
- * the bench sync word while radio_bench_mode() reported protocol - a flag
- * broader than what it covered, and on air it is a frame nobody decodes. */
+/* A reconfiguration, not a retune: the sync word stayed behind once and nothing decoded.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 int radio_set_channel(uint8_t slot) {
     if (bench_mode)
         return radio_configure(slot);
     return set_frequency(radio_slot_hz(slot));
 }
 
-/* Settable so a variant can be swept inside one pairing window instead of one
- * rebuild-and-flash per guess. */
+/* Settable so a variant is swept inside one window, not one flash per guess.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 int radio_set_crc(const char *mode) {
     if (strcmp(mode, "off") == 0)        crc_type = CRC_OFF;
     else if (strcmp(mode, "2") == 0)     crc_type = CRC_2_BYTE;
@@ -200,20 +182,16 @@ int radio_set_crc(const char *mode) {
     return configure(current_slot, bench_mode);
 }
 
-/* What the chip holds, not what we composed - the SPI write is inside this and
- * a struct dump is not. */
+/* What the chip holds: the SPI write is inside this and is not inside a struct dump.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 int radio_read_tx_buffer(uint8_t *out, uint8_t len) {
     if (!configured || out == NULL || len == 0u)
         return -1;
     return HAL_SUBGHZ_ReadBuffer(&hsubghz, TX_BASE_ADDR, out, len) == HAL_OK ? 0 : -1;
 }
 
-/* The PHY owns its own overhead: the preamble is settable and the CRC is two
- * bytes or none, so a caller computing air time from the payload alone would be
- * wrong the moment either moves. */
-/* The contract's macro is fixed at the default preamble and a CRC that is on;
- * this function follows both when they move. They must still agree where the
- * macro is valid, or one of them is wrong about the same wire. */
+/* The PHY owns its overhead: preamble and CRC both move, and the macro pins neither.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 _Static_assert(RADIO_PHY_OVERHEAD_B ==
                    RADIO_PREAMBLE_BYTES + RADIO_SYNC_BYTES + 1u + RADIO_CRC_BYTES,
                "PHY overhead disagrees with its own parts");
@@ -275,9 +253,8 @@ static int set_modulation(void) {
 }
 
 static int set_packet_params(uint8_t payload_len) {
-    /* Preamble length is in bits here and in bytes on the RFM69 - the hub's
-     * four bytes are these thirty-two. Settable because the far end's bit
-     * synchroniser needs some number of them and nobody has measured which. */
+    /* Bits here, bytes on the RFM69: the hub's four bytes are these thirty-two.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     uint8_t buf[9] = {
         (uint8_t)(preamble_bits >> 8), (uint8_t)preamble_bits,
         PREAMBLE_DETECT_16BIT,
@@ -356,8 +333,8 @@ static int clear_irq(uint16_t mask) {
 
 static int get_irq(uint16_t *status) {
     uint8_t buf[2] = {0};
-    /* HAL_SUBGHZ_ExecGetCmd already flushes the chip status byte, so what lands
-     * in the buffer is the payload alone - no leading byte to skip. */
+    /* ExecGetCmd already flushes the status byte: no leading byte to skip.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     if (cmd_get(RADIO_GET_IRQSTATUS, buf, sizeof(buf)) != 0)
         return -1;
     *status = (uint16_t)((buf[0] << 8) | buf[1]);
@@ -381,14 +358,14 @@ static int configure(uint8_t slot, int want_bench) {
     if (cmd_set(RADIO_SET_TCXOMODE, buf, 4) != 0)
         return -1;
 
-    /* Every calibration before this point ran against an oscillator that was
-     * not powered, so they all have to be redone. */
+    /* Redone: every calibration before this ran against an unpowered oscillator.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     buf[0] = CALIBRATE_ALL;
     if (cmd_set(RADIO_CALIBRATE, buf, 1) != 0)
         return -1;
     delay_us_poll(5000u);
-    /* ClrError takes two bytes; feeding it one leaves the register holding
-     * whatever the next byte on the bus happened to be. */
+    /* ClrError takes two bytes; one leaves whatever was next on the bus.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     buf[0] = 0x00; buf[1] = 0x00;
     if (cmd_set(RADIO_CLR_ERROR, buf, 2) != 0)
         return -1;
@@ -415,10 +392,8 @@ static int configure(uint8_t slot, int want_bench) {
     if (cmd_set(RADIO_SET_BUFFERBASEADDRESS, buf, 2) != 0)
         return -1;
 
-    /* 14 dBm on the low-power PA, matching the hub's 13 dBm within a step.
-     * Fields are paDutyCycle, hpMax, deviceSel, paLut - deviceSel must be 1 for
-     * the LP PA, or the chip drives the HP pin while the board's switch routes
-     * the LP path and almost nothing reaches the antenna. */
+    /* paDutyCycle, hpMax, deviceSel, paLut. deviceSel must be 1 or the LP path is silent.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     buf[0] = 0x04; buf[1] = 0x00; buf[2] = 0x01; buf[3] = 0x01;
     if (cmd_set(RADIO_SET_PACONFIG, buf, 4) != 0)
         return -1;
@@ -457,16 +432,13 @@ int radio_set_tcxo_us(uint32_t us) {
     if (steps == 0u || steps > 0x00FFFFFFu)
         return -1;
     tcxo_steps = steps;
-    /* The chip latches the mode at configure time, so nothing changes until the
-     * whole PHY is set up again - and re-running it also clears the errors a
-     * previous too-short setting latched. */
+    /* Latched at configure time, and re-running clears errors a short setting latched.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     return configure(0, bench_mode);
 }
 
-/* Every wait here is bounded. The old hub driver polled DIO without a timeout,
- * which turns any missed interrupt into a hung core rather than a failed call. */
-/* The poll itself is SPI traffic, so the two are charged separately: what is
- * left under radio-wait is the part a DIO interrupt or a sleep could recover. */
+/* Bounded: an untimed DIO poll turns a missed interrupt into a hung core.
+ * radio_devices_docs/wl55_device/radio/driver.md */
 static int wait_irq(uint16_t wanted, uint32_t timeout_us, uint16_t *got) {
     uint32_t deadline = micros() + timeout_us;
     int rc;
@@ -523,8 +495,8 @@ static int receive_from(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info
 
     if (!configured)
         return -1;
-    /* The caller owns timeout_us; clearing the whole struct would zero it and
-     * make every receive expire before the radio has even started. */
+    /* The caller owns timeout_us: zeroing it expires every receive before the radio starts.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     uint32_t timeout_us = info->timeout_us;
     memset(info, 0, sizeof(*info));
     info->timeout_us = timeout_us;
@@ -539,8 +511,8 @@ static int receive_from(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info
     HAL_NVIC_ClearPendingIRQ(SUBGHZ_Radio_IRQn);
     HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn);
     BSP_RADIO_ConfigRFSwitch(RADIO_SWITCH_RX);
-    /* Everything above is SPI the caller should not pay for at the appointment:
-     * only the command itself has to land on time. */
+    /* SPI the caller should not pay for at the appointment: only the command lands on time.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     if (start_us != NULL)
         while (!timebase_elapsed(*start_us))
             ;
@@ -617,8 +589,8 @@ int radio_rx_ramp_probe(uint32_t timeout_us, uint32_t *span_us) {
     if (set_packet_params(RADIO_MAX_PAYLOAD) != 0)
         return -1;
 
-    /* 15.625 us per step is 1/64 us inverted, so the conversion is exact in
-     * integers and the requested figure is not quietly rounded away. */
+    /* 15.625 us is 1/64 us inverted, so the conversion is exact in integers.
+     * radio_devices_docs/wl55_device/radio/driver.md */
     uint32_t steps = (timeout_us * 64u) / 1000u;
     if (steps == 0u || steps > 0x00FFFFFFu)
         return -1;

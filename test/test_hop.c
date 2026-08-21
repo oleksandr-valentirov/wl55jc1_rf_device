@@ -1,19 +1,12 @@
-/* The shuffle, pinned on the host against the hub's published hop_v1 - and the
- * two layers kept apart.
- *
- * The primitive is checked on the silicon against FIPS-197 and the real key.
- * Here the AES is *replayed* from the published stream rather than computed, so
- * this test needs no AES at all and a failure can only be the shuffle. A single
- * check covering both says the sequence is wrong without saying which layer,
- * and a wrong PRF and a wrong shuffle both still produce a valid permutation. */
+/* The shuffle alone: the AES is replayed from the published stream, not computed.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include <stdio.h>
 #include <string.h>
 
 #include "hop.h"
 
-/* Both headers name their digest HOP_VECTORS_DIGEST. Captured and undefined
- * here rather than renamed in either file - the shared one is generated and
- * published, and a local build problem is not a reason to touch it. */
+/* Both headers name their digest HOP_VECTORS_DIGEST; captured and undefined here.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include "hop_vectors.h"
 static const char *const local_digest = HOP_VECTORS_DIGEST;
 #undef HOP_VECTORS_DIGEST
@@ -33,9 +26,8 @@ static void eq(const char *name, const void *a, const void *b, size_t n) {
     check(name, memcmp(a, b, n) == 0);
 }
 
-/* Replaces the accelerator. Recovers which of the four published blocks is
- * being asked for from the input itself, so a build_deck that assembled the
- * counter differently gets no block rather than a wrong one. */
+/* Recovers the block from the input, so a differently built counter gets none.
+ * radio_devices_docs/wl55_device/testing/host-tests.md */
 int crypto_aes_ecb_block(const uint8_t *key16, const uint8_t in[16], uint8_t out[16]) {
     static const uint8_t zeros[12] = {0};
     uint32_t cycle = ((uint32_t)in[0] << 24) | ((uint32_t)in[1] << 16) |
@@ -60,9 +52,8 @@ int main(void) {
 
     printf("local %s   shared hop_v1 %s\n\n", local_digest, shared_digest);
 
-    /* The local generator and the shared contract must not drift apart. A
-     * device that agrees only with its own tooling is the divergence this
-     * whole vector process exists to prevent. */
+    /* A device agreeing only with its own tooling is what the vectors exist to stop.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     eq("key matches hop_v1", vec_hop_key, HV_HOP_KEY, 16);
     eq("prf input matches hop_v1", vec_hop_prf_in, HV_PRF_IN, 16);
     eq("prf output matches hop_v1", vec_hop_prf_out, HV_PRF_OUT, 16);
@@ -86,21 +77,19 @@ int main(void) {
     check("cycle 0 deck from the replayed stream", deck0);
     check("cycle 1 deck from the replayed stream", deck1);
 
-    /* Two blocks per cycle and no more: the deck is cached, so a shuffle that
-     * re-ran the PRF per superframe would still be correct and cost 56 AES
-     * blocks a cycle on a core that has other work. */
+    /* Two blocks a cycle: a per-superframe PRF would be correct and cost 56.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     check("the PRF ran twice per cycle, not per superframe", prf_calls == 4);
 
-    /* Cycle 0's block is all zeroes and reads the same under either endian
-     * convention, so a test built on it alone is green for the hub's first 56
-     * seconds and wrong for ever after. Cycle 1 is what separates them. */
+    /* Cycle 0 is all zeroes and reads the same either endian; cycle 1 separates them.
+     * radio_devices_docs/wl55_device/testing/host-tests.md */
     check("cycle 1 differs from cycle 0", memcmp(HV_DECK0, HV_DECK1, 28) != 0);
 
     int samples_ok = 1;
     for (int i = 0; i < 10; i++) {
         uint32_t sf = HV_SAMPLE_SF[i];
-        /* Only cycles 0 and 1 have a published stream; the rest are the
-         * indexed-not-stepped property and need the real PRF. */
+        /* Only cycles 0 and 1 have a published stream; the rest need the real PRF.
+         * radio_devices_docs/wl55_device/testing/host-tests.md */
         if (sf / HOP_VEC_COUNT > 1u)
             continue;
         if (hop_channel(&ctx, sf, &ch) != 0 || ch != HV_SAMPLE_CH[i])

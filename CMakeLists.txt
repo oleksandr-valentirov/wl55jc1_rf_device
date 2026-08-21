@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-#
-# This file is generated only once,
-# and is not re-generated if converter is called multiple times.
-#
-# User is free to modify the file as much as necessary
-#
+# Generated once by STM32CubeMX and hand-maintained since.
 
 # Setup compiler settings
 set(CMAKE_C_STANDARD 11)
@@ -34,11 +29,7 @@ enable_language(C ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
-# STM32CubeMX bakes absolute paths to the Cube FW package into
-# cmake/stm32cubemx/CMakeLists.txt. Rewriting the prefix at configure time keeps
-# the libraries out of the repository (ProjectManager.LibraryCopy=2) while still
-# letting a committed file that carries someone else's paths build here.
-# Override with -DCUBE_FW_PATH=<path> or the CUBE_FW_PATH environment variable.
+# CubeMX bakes absolute paths in; override with -DCUBE_FW_PATH=<path>.
 if(NOT DEFINED CUBE_FW_PATH)
     if(DEFINED ENV{CUBE_FW_PATH})
         set(CUBE_FW_PATH "$ENV{CUBE_FW_PATH}")
@@ -54,9 +45,8 @@ if(NOT EXISTS "${CUBE_FW_PATH}")
 endif()
 message(STATUS "Cube FW: ${CUBE_FW_PATH}")
 
-# The wire-format vectors live in the hub's tree and are included, not copied:
-# two implementations checking the same file is the entire point, and a stale
-# copy would break interoperability exactly where the contract is meant to hold.
+# The wire vectors are included from the hub's tree, never copied.
+# radio_devices_docs/wl55_device/testing/host-tests.md
 if(NOT DEFINED OPENHUB_PATH)
     if(DEFINED ENV{OPENHUB_PATH})
         set(OPENHUB_PATH "$ENV{OPENHUB_PATH}")
@@ -78,8 +68,7 @@ file(READ "${MX_GENERATED_IN}" MX_GENERATED_TEXT)
 string(REGEX REPLACE
     "/[^ \t\r\n]*STM32Cube/Repository/STM32Cube_FW_WL_V[0-9.]+/"
     "${CUBE_FW_PATH}/" MX_GENERATED_TEXT "${MX_GENERATED_TEXT}")
-# The generated file reaches the project through ${CMAKE_CURRENT_SOURCE_DIR}/../..,
-# which no longer points here once the processed copy lives in the build tree.
+# The relative path moves once the processed copy lives in the build tree.
 string(REPLACE "\${CMAKE_CURRENT_SOURCE_DIR}/../.." "${CMAKE_CURRENT_SOURCE_DIR}"
        MX_GENERATED_TEXT "${MX_GENERATED_TEXT}")
 file(WRITE "${MX_GENERATED_OUT}" "${MX_GENERATED_TEXT}")
@@ -114,8 +103,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/hop.c
     Core/Src/load.c
     Core/Src/pair_init.c
-    # The RF switch on this board is BSP territory; the .ioc pulls in
-    # stm32wlxx_nucleo.c but not the radio half of the same driver.
+    # The RF switch is BSP territory: the .ioc pulls in the nucleo half only.
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c
 )
 

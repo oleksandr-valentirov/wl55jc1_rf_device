@@ -1,9 +1,5 @@
-/* SHA-256, HMAC and HKDF in software.
- *
- * The WL55 has no HASH peripheral - the hub has one and no PKA, this part is
- * the mirror image - so the hash side of the wire format is code here rather
- * than silicon. FIPS 180-4 and RFC 5869; nothing clever, because the only thing
- * that matters is that it produces the bytes the specification says. */
+/* SHA-256, HMAC and HKDF in software: this part has no HASH peripheral.
+ * radio_devices_docs/wl55_device/security/README.md */
 #include <string.h>
 
 #include "sha256.h"
@@ -52,8 +48,8 @@ static void compress_inner(sha256_ctx_t *c, const uint8_t *block) {
     c->h[4] += e; c->h[5] += f; c->h[6] += g; c->h[7] += h;
 }
 
-/* Charged at the compression function: this is the whole of SHA-256's cost, and
- * it is software on this part - there is no HASH peripheral to hand it to. */
+/* Charged at the compression function: the whole of SHA-256's cost, in software.
+ * radio_devices_docs/wl55_device/testing/console.md */
 static void compress(sha256_ctx_t *c, const uint8_t *block) {
     load_enter(LOAD_CRYPTO);
     compress_inner(c, block);
@@ -151,9 +147,7 @@ void hkdf_sha256(const uint8_t *salt, uint32_t salt_len,
 
     hmac_sha256(salt, salt_len, ikm, ikm_len, prk);
 
-    /* T(n-1) || info || counter has to fit; the wire format's info strings are
-     * under twenty bytes, but a silent overrun here would be a bad way to
-     * discover that someone added a longer one. */
+    /* T(n-1) || info || counter must fit; a silent overrun is a bad way to find out. */
     if (info_len > HKDF_MAX_INFO)
         return;
 

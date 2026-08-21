@@ -2,12 +2,8 @@
 
 #include <stdint.h>
 
-/* Where the CPU's time actually goes.
- *
- * The distinction that matters is not busy against idle but *recoverable*
- * against not: cycles spent polling a radio interrupt can be given back by an
- * interrupt or a sleep, cycles spent inside AES cannot. A single "load" number
- * hides exactly that. */
+/* Recoverable against not: a radio poll can be given back, AES cannot.
+ * radio_devices_docs/wl55_device/testing/console.md */
 typedef enum {
     LOAD_CRYPTO = 0,    /* AES and SHA - real computation, not recoverable */
     LOAD_PKA,           /* P-256 - the accelerator runs, the core only waits */

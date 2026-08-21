@@ -1,21 +1,12 @@
-/* Pairing: one P-256 ECDH over the air, then HKDF to the session and hop keys.
- *
- * The exchange is cleartext because neither end has a key yet. That is not a
- * weakness on its own - an attacker can start an exchange but cannot finish one,
- * because the hub checks the device's public key against a fingerprint the
- * operator supplied out of band. Without that check pairing is anonymous ECDH
- * and trivially relayed, which must not be mistaken for a working design. */
+/* One P-256 ECDH over the air, then HKDF. Cleartext; the fingerprint is what binds it.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 #include <stddef.h>
 #include <string.h>
 
 #include "pairing.h"
 
-/* 45 bytes: 12 of header and one SEC1 compressed point. Written as the sum it
- * has to equal rather than as 45, so a change to either part is a build error
- * and not a frame the far side silently refuses on length. */
-/* Against the contract's literal, not against sizeof - comparing the struct to
- * itself is the vacuous form, and it is what let a 45-byte local layout sit
- * beside a 49-byte shared one with both sides asserting their own number. */
+/* The sum it must equal, against the contract's literal rather than against sizeof.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 _Static_assert(sizeof(radio_pair_req_t) == 57u, "PAIR_REQ must stay 57 bytes");
 #include "radio.h"
 #include "sha256.h"
@@ -24,9 +15,8 @@ _Static_assert(sizeof(radio_pair_req_t) == 57u, "PAIR_REQ must stay 57 bytes");
 static const uint8_t info_session[] = "openhub/v1/session";
 static const uint8_t info_hop[]     = "openhub/v1/hop";
 
-/* One place, because the fingerprint and the transmitted key must be a hash of
- * the same bytes - two copies of this can drift and the symptom is an enrolment
- * that never matches. */
+/* One place: the fingerprint and the transmitted key must hash the same bytes.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static void compress_pub(const uint8_t *sec1_65, uint8_t *out33) {
     out33[0] = (uint8_t)(0x02u | (sec1_65[P256_PUB_LEN - 1] & 1u));
     memcpy(out33 + 1, sec1_65 + 1, P256_PUB_COMPRESSED_LEN - 1u);
@@ -46,10 +36,8 @@ int pairing_new_nonce(pairing_ctx_t *ctx) {
     return 0;
 }
 
-/* All zero is what an RNG that never ran leaves behind. It is the unseeded
- * signature and not a quality test - a generator stuck on any other constant
- * walks straight through - so the hub's per-device memory of the last nonce is
- * the check that means something. This one only fires a round earlier. */
+/* The unseeded signature, not a quality test: any other constant walks through.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static int nonce_is_zero(const pairing_ctx_t *ctx) {
     uint8_t any = 0;
     for (uint32_t i = 0; i < sizeof(ctx->dev_nonce); i++)
@@ -64,14 +52,8 @@ int pairing_keygen(pairing_ctx_t *ctx) {
     return 0;
 }
 
-/* The compressed point, so the fingerprint and the wire always name the same
- * bytes. This hashed the 65-byte uncompressed point and truncated to 6, against
- * a hub that demands 64 hex digits over the 33-byte compressed one - so
- * enrolment could never have matched. pair_v2 pins the domain; found by diffing
- * against it rather than by reading either side. */
-/* The compressed point itself, because v3's operator value is the key rather
- * than its hash: a curve point cannot be recovered from SHA-256, so a hub that
- * needs Z1 must be given the key. Sized twice, same as the fingerprint. */
+/* The compressed point, so the fingerprint and the wire name the same bytes.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx, uint8_t out[P256_PUB_COMPRESSED_LEN],
                          uint32_t out_len) {
     if (!ctx->have_key || out_len < P256_PUB_COMPRESSED_LEN)
@@ -83,12 +65,8 @@ uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx, uint8_t out[P256_PUB_COMPRESS
 uint8_t pairing_fingerprint(const pairing_ctx_t *ctx, uint8_t out[SHA256_LEN],
                             uint32_t out_len) {
     uint8_t compressed[P256_PUB_COMPRESSED_LEN];
-    /* Bounded twice, and the two catch different callers. The array parameter
-     * makes gcc refuse a short *array* at compile time - measured, -Wall alone
-     * at -O0 - which a bare uint8_t* does not. out_len catches the caller that
-     * passes a pointer, where no compiler can see the size. Widening this from
-     * 6 to 32 bytes turned the one existing caller into a stack overflow with
-     * neither check in place. */
+    /* Bounded twice: the array parameter catches a short array, out_len a bare pointer.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (!ctx->have_key || out_len < SHA256_LEN)
         return 0;
     compress_pub(ctx->pub, compressed);
@@ -101,10 +79,8 @@ static uint32_t get_le32(const uint8_t *p) {
            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-/* Both ids travel in both directions. Carrying only the sender's would let a
- * device pairing at the same time as another accept the wrong response and
- * derive a session against a hub that thinks it is talking to someone else -
- * safe in the keys, but presenting as correct ECDH with different keys. */
+/* Both ids both ways: one id lets two devices derive against the wrong peer.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static void build_pair_frame(const pairing_ctx_t *ctx, uint8_t type, uint8_t *out) {
     radio_pair_req_t f;
     f.type       = type;
@@ -118,13 +94,8 @@ static void build_pair_frame(const pairing_ctx_t *ctx, uint8_t type, uint8_t *ou
     memcpy(out, &f, sizeof(f));
 }
 
-/* The SINGLE-TERM derivation from wire_v3, and no longer what pairing produces.
- *
- * pair_v2 derives from a 64-byte Z over two ECDH terms and salts with the
- * request's superframe and nonce; exchange.c is that. This stays because
- * wire_v3 still pins it as a primitive and the bench command below still runs
- * the one-frame exchange. Named for the construction rather than for the job,
- * so a green result here cannot be read as evidence about pairing. */
+/* The SINGLE-TERM derivation from wire_v3, named for the construction not the job.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static void derive_single_term_v1(pairing_ctx_t *ctx, const uint8_t *shared_x) {
     uint8_t salt[8];
     salt[0] = (uint8_t)(ctx->hub_id >> 24);
@@ -152,8 +123,8 @@ static int exchange(pairing_ctx_t *ctx, uint8_t send_type, uint8_t expect_type,
 
     if (!ctx->have_key && pairing_keygen(ctx) != 0)
         return -1;
-    /* Fresh per attempt, and a refusal to transmit rather than a zero nonce:
-     * sending one restores the replay this field exists to remove. */
+    /* Fresh per attempt, refused rather than sent as zero: zero restores the replay.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (pairing_new_nonce(ctx) != 0 || nonce_is_zero(ctx))
         return -7;
     build_pair_frame(ctx, send_type, frame);
@@ -172,8 +143,8 @@ static int exchange(pairing_ctx_t *ctx, uint8_t send_type, uint8_t expect_type,
     uint32_t rx_dev = get_le32(rx + 8);
     if (rx_net != ctx->net_id)
         return -6;
-    /* Filter before spending 103 ms of PKA on a frame that is not ours. The
-     * device knows both ids by now; the hub is still learning dev_id. */
+    /* Filter before 103 ms of PKA. The device knows both ids; the hub is still learning.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (expect_type == PAIR_TYPE_RESPONSE) {
         if (rx_dev != ctx->dev_id || rx_hub != ctx->hub_id)
             return -6;
@@ -194,8 +165,8 @@ static int exchange(pairing_ctx_t *ctx, uint8_t send_type, uint8_t expect_type,
     }
 
     uint8_t peer_pub[P256_PUB_LEN];
-    /* Offsets come from the shared struct, so a field added there moves both
-     * ends together instead of only the one that noticed. */
+    /* Offsets from the shared struct, so a new field moves both ends together.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
     if (crypto_p256_decompress(rx[offsetof(radio_pair_req_t, pubkey)],
                                rx + offsetof(radio_pair_req_t, pubkey) + 1u,
                                peer_pub) != 0)
@@ -210,17 +181,15 @@ static int exchange(pairing_ctx_t *ctx, uint8_t send_type, uint8_t expect_type,
     return 0;
 }
 
-/* The device must know which hub it is addressing before it asks, so that the
- * response filter above has something to compare against. */
+/* Known before the request, so the response filter has something to compare.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 int pairing_set_hub(pairing_ctx_t *ctx, uint32_t hub_id) {
     ctx->hub_id = hub_id;
     return 0;
 }
 
-/* The salt crosses the one boundary the wire format deliberately has two sides
- * of: the ids travel little-endian and enter HKDF big-endian. The vectors pin
- * it only for the literal salt bytes, so this runs the real derive() over ids
- * held as integers - which is what pairing does with ids taken off the air. */
+/* Ids held as integers, which is what pairing does with ids taken off the air.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 int pairing_salt_check(const uint8_t *shared_x, uint32_t hub_id, uint32_t dev_id,
                        uint8_t *session_out, uint8_t *hop_out) {
     pairing_ctx_t probe;

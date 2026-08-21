@@ -2,13 +2,8 @@
 
 #include <stdint.h>
 
-/* Channel selection, written to the same specification as the hub's hop.c and
- * from the same description rather than from its source - two implementations
- * agreeing is the only evidence that the specification is complete.
- *
- * The sequence is a keyed shuffle indexed by the superframe counter, so a node
- * that slept through a thousand superframes reads the counter from a beacon and
- * computes the current channel directly. Nothing to fast-forward. */
+/* Channel selection from the specification, not from the hub's source.
+ * radio_devices_docs/wl55_device/radio/hopping.md */
 
 #define HOP_MAX_CHANNELS 64
 
