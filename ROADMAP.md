@@ -104,10 +104,15 @@ allows, and three opportunities at 20 % is not three chances at the deadline —
 it is 49 % of one. The hub's `radio/tdma.md` now states this plainly rather than
 quoting the old 876-of-876 at -24 dBm.
 
-**Item 21 blocks measuring it.** A k=3 PER run taken before this side has the
-tuple replay floor measures the floor, not the radio: two of every three frames
-are refused after their tag verifies. That boot would produce a number to throw
-away.
+**Item 21 does not block measuring it, and the claim that it did was wrong in
+both directions.** A k=3 PER run is this device transmitting three uplinks and
+the hub receiving them. This side's transmit half has compared `(superframe,
+slot)` since `feat(link)`, and the hub's receive half has carried `rx_floor`
+beside `rx_floor_slot` since before the question was asked — `CM4/Core/Src/radio.c`,
+`age < 0 || (age == 0 && f.slot <= d->rx_floor_slot)`, checked in HEAD rather
+than assumed. **Nothing in the k=3 path refuses two of every three.** What item 21
+was actually about is this side's *receive* direction, which has no k=3 in it at
+all. The run is available and was never gated.
 
 **That assert was green on a capability this device did not have.** It computes
 `RADIO_EVENT_GAP_US` from `RADIO_SLOT_OPPS`, and until the seal-guard fix (`pre-squash-2026-08-21`) the guard
@@ -233,37 +238,6 @@ Item 5 (reboot-and-recover as one sequence) cannot pass while this stands.
 
 `radio_devices_docs/radio/crypto/wire-crypto.md`.
 
-### 7. `supply_mv` has never been non-zero and nothing says so on the wire — `defect`
-
-The report sends `supply_mv = 0` from both paths because there is no ADC on this
-build. RSSI has `RADIO_REPORT_FLAG_RSSI_STALE` for exactly this reason; the rail
-has no such bit, so a hub cannot tell "not measured" from "0 mV". A counter that
-has never read non-zero cannot be read in either direction (`verification`
-skill).
-
-Either wire the ADC or add the flag — the second is a contract change.
-
-**Agreed with the hub session 2026-08-22, and it is their item 32 to author.**
-`flags` is a byte with one bit defined, so the set is:
-
-    #define RADIO_REPORT_FLAG_RSSI_STALE    0x01
-    #define RADIO_REPORT_FLAG_SUPPLY_STALE  0x02
-    #define RADIO_REPORT_FLAG_RESUMED       0x04
-
-No frame-size change, no slot re-derivation, no new field. **Masks, never bit
-positions** — this side wrote "bit 2" and `0x02` about two different flags in one
-message, which is the 45-vs-49 shape reached through an ordinal.
-
-Their item 7 is this defect seen from the other end: `supply_mv` printing 0 mV
-indistinguishably from unmeasured at `CM7/Core/Src/cli.c:636`. They render `—`
-when the bit is set, in the same commit as the wire change, so the bit is not
-decorative on arrival.
-
-**This side's obligation once the header lands: set the bit unconditionally until
-the ADC path exists**, so the wire never claims a measurement that was not taken.
-
-`Core/Src/cli.c:2166`, `Core/Src/cli.c:2462`.
-
 ### 8. `report_service` blocks the superloop while it waits — `debt`
 
 Two spin waits per cycle hold the core until an absolute instant, so the console
@@ -273,50 +247,61 @@ the blocker for item 1, which needs the same loop to do several.
 
 `Core/Src/cli.c` → `report_service`.
 
-### 21. The replay rule refuses two frames of every three under k=3 — `defect` `contract`
+### 21. `frame.c`'s replay rule guards a loopback, not the production path — `debt`
 
-**The transmit half is fixed** (in `feat(link)`, `pre-squash-2026-08-21`): `seal_claim` was keyed on the
-superframe alone, so this device could seal only the first of its three
-opportunities and refused its own k=1 and k=2 with `TLM_WHY_SEAL`. It now
-compares the pair `(superframe, slot)` lexicographically, which is the hub's
-rule at `CM4/Core/Src/radio.c:1463`, mirrored. Measured before the fix: three
-cycles emitting `tx.up slot=1` followed by two `tx.deny why=3`. Measured after:
-three frames on one channel 611 ms apart, which is the instrument the hub had
-been asking for all night to separate its own estimator's spread from the
-channel's.
+**The transmit half is fixed** (in `feat(link)`, `pre-squash-2026-08-21`):
+`seal_claim` compares the pair `(superframe, slot)` lexicographically, mirroring
+the hub at `CM4/Core/Src/radio.c:1463`. Measured before: three cycles emitting
+`tx.up slot=1` then two `tx.deny why=3`. After: three frames on one channel
+611 ms apart.
 
-**The receive half and the durable floor are still open.** `Core/Src/frame.c:124`
-is `(int32_t)(superframe - ctx->last_accepted) <= 0`, the superframe alone, with
-no `rx_floor_slot` anywhere in this tree. Under k = 3 the second and third frames
-of a superframe take the `<= 0` branch and are refused. Confirmed to the hub
-2026-08-22; their `radio/tdma.md` now states it rather than hedging it.
+**The receive half is fixed, and this item had the defect in the wrong place.**
+It named `Core/Src/frame.c` as this side's receive rule. That is the rule, but
+`frame_open` has one caller — the `frame` console command, invoked with
+`FRAME_DIR_UPLINK` and a fixed slot 7. It is a loopback instrument. The path
+that receives real commands is `downlink_open` -> `downlink_apply`, and it
+consulted **no floor at all**; `downlink_apply`'s `cmd_seq` match is idempotence,
+not a replay guard. Closed in `fix(downlink): a replay floor on the path that
+receives real commands`.
 
-**And the refusal happens after the tag verifies, so the frames are counted as
-replays.** A replay counter climbing steadily on a healthy link reads as an
-attack and points at the radio — raised by the hub session, and it is how this
-will present before anyone suspects the floor.
+**The tuple this item prescribed is the wrong shape for this direction**, and the
+reason is two facts on the hub: `downlink_service` returns early on
+`dl_served == frame_counter`, so one downlink per superframe, and a downlink's
+`slot` is the addressed device's granted slot rather than an opportunity index.
+For one device it is a constant, so a tuple would be a mechanism with no varying
+input — and would read as "this side has the k=3 floor" when this direction has
+no k=3 in it.
 
-The hub's tuple floor is `rx_floor` beside `rx_floor_slot`, refusing on
-`age < 0 || (age == 0 && f.slot <= d->rx_floor_slot)`. This side has to become
-that.
+**What is left is `frame.c` itself**, whose scalar rule is correct for the
+loopback it guards but is one grep away from being read as the production rule
+again. Either give it a caller that varies the slot or say on it what it guards.
 
-`frame_open` accepts only a strictly increasing superframe, and item 4 makes a
-device send three frames carrying the same one. The second and third are then
-refused **after the tag verifies**, which reads as a protocol fault rather than
-as a bug. The hub reports a replay counter on the uplink and its predicate has
-not been read yet.
+Bounding the transmit side, which has not changed: three opportunities are
+nonce-safe **only because the slot is in the nonce**. Carrying one slot number
+for all three would be same-key, same-nonce, three plaintexts.
 
-The fix costs nothing: the slot number is already a nonce input, so the replay
-state can be the tuple the nonce is, `(superframe, slot)` lexicographic, which
-ascends for a well-behaved device. **The durable floor is a bare superframe**
-(`store_note_received`, `rx_floor`) and needs the same treatment or a reboot
-mid-superframe loses the ordering.
+`Core/Src/frame.c`, `radio_devices_docs/wl55_device/security/replay.md`.
 
-Bounding it: three opportunities are nonce-safe **only because the slot is in
-the nonce**. Carrying one slot number for all three would be same-key,
-same-nonce, three plaintexts — the one part of this change that fails silently.
+### 40. A reset reopens up to a thousand superframes of replay window — `defect`
 
-`Core/Src/frame.c:123`, `radio_devices_docs/radio/crypto/wire-crypto.md`.
+The downlink floor is durable through `store_note_received` / `rx_floor`, and
+that write is amortised to `STORE_COUNTER_STEP`, which is 1000. So the stored
+floor trails the live one by up to a thousand superframes — over half an hour at
+`SUPERFRAME_US` — and after a reset every downlink inside that trail is accepted
+again. The flag closed the unbounded case, not this one.
+
+The amortisation exists because the alternative is a flash append per accepted
+frame, which the store's endurance does not have and which cannot happen inside
+a slot in any case. So the fix is not a smaller step: it is either a second,
+cheaper durable location for the tail, or an argument that the trail is
+acceptable because a downlink carries `cmd_seq` and `downlink_apply` refuses a
+repeat of the command it holds — which is an argument, not a guard, and this file
+is not the place to make it.
+
+Found 2026-08-22 while closing item 21. Nothing on the wire changes either way.
+
+`Core/Src/store.c` → `store_note_received`,
+`radio_devices_docs/wl55_device/security/replay.md`.
 
 ### 34. Low power turns the link on; the AGC explanation is weak and this PA is not cleared — `blocking` `hub`
 
@@ -485,61 +470,56 @@ restart gate. Two frames confirm nothing but can aim the next window.
 **The preamble arm is testable from here without a contract change**, see item
 37. `radio_devices_docs/radio/phy.md`.
 
-### 37. The preamble is settable at runtime and the slot assert cannot see it — `defect`
+### 37. A runtime preamble walks past the assert that sizes the slot — `defect`
 
-`radio preamble <2..32>` writes `preamble_bits` and `radio_air_time_us()` follows
-it, but `_Static_assert(RADIO_FRAME_AIR_US(RADIO_UPLINK_BYTES) <= RADIO_SLOT_US)`
-is written against the compile-time `RADIO_PREAMBLE_BYTES`, so **a runtime
-preamble change walks straight past the only check that the frame still fits its
-slot.** An assert pinning two constants the same side owns pins nothing about the
-value actually on the air (`verification`).
+`radio preamble <2..32>` writes `preamble_bits` and `radio_tx_air_time_us`
+follows it, but `_Static_assert(RADIO_FRAME_AIR_US(RADIO_UPLINK_BYTES) <=
+RADIO_SLOT_US)` is written against the compile-time `RADIO_PREAMBLE_BYTES`, so a
+runtime change walks straight past the only check that the frame still fits its
+slot. An assert pinning two constants the same side owns pins nothing about the
+value on the air (`verification`).
 
-**A second consumer, found 2026-08-22 and worse than the first**, because it
-corrupts measurements rather than frames: `RADIO_PRE_SYNC_US` also uses the
-compile-time `RADIO_PREAMBLE_BYTES`, and `start_us` subtracts it. So **any lag or
-sync-edge reading taken while the preamble was swept away from 4 bytes is out by
-`(set - 4) x RADIO_US_PER_BYTE`, silently, inside the subtraction.** Node B is at
-4 bytes today, so current readings are clean and older ones may not be — and
-**no log records what the preamble was at the time**, which is the actual gap.
-
-The hub cannot carry this contamination at any date: its preamble is not
-runtime-settable and `radio_phy.h:147` refuses a changed value at compile time.
-So whenever the hub is the measuring side, the preamble term is not a candidate
-explanation.
-
-Fix in two parts: print the preamble on every `radio slot` and `device synctime`
-line so a reading carries its own denominator, and make the pre-sync term follow
-the runtime value as `air_time_us` already does.
-
-By hand, which is the problem:
-
-    frame air at 4 B preamble    8000 us
-    slot                         9400 us  (8000 air + 1400 guard)
-    measured start offset         ~590 us  (582..600, tonight)
-    headroom                      ~810 us  = 5 bytes, so 8 is the maximum
-
-At 9 bytes the frame is 9390 us in a 9400 us slot. The command happily accepts
-32, which is 12480 us and overruns the next slot by three milliseconds.
-
-**Half closed.** `radio_set_preamble` now costs the value before setting it and
-refuses anything whose uplink frame will not fit `RADIO_SLOT_US`, which is the
-runtime analogue of the assert and removes the catastrophic case - 32 bytes is
-12480 us, three slots wide, and was accepted. `air_time_us` takes the preamble as
-an argument so a value can be costed before it is live.
+**Half closed.** `radio_set_preamble` costs the value before setting it and
+refuses anything whose uplink frame will not fit `RADIO_SLOT_US`, which removes
+the catastrophic case - 32 bytes is 12480 µs, three slots wide, and was accepted.
 
 **What it still does not encode is the placement offset.** The check allows up to
-12 bytes, and 12 overruns once the measured ~590 us of start offset is added.
+12 bytes and 12 overruns once the measured ~590 µs of start offset is added.
 There is no constant for that offset to check against - that is item 11, which
 has never sized `RADIO_SLOT_GUARD_US` from a measured ramp. Until it does, 8 is a
-hand-checked number and not one the firmware enforces.
+hand-checked number and not one the firmware enforces:
 
-**Why this matters now:** 4 -> 8 bytes restores the 1280 us AGC settling budget
+    frame air at 4 B preamble    8000 µs
+    slot                         9400 µs  (8000 air + 1400 guard)
+    measured start offset         ~590 µs  (582..600)
+    headroom                      ~810 µs  = 5 bytes, so 8 is the maximum
+
+**The second consumer this item used to record was recorded backwards, and the
+prescription would have caused the error it named.** It read `start_us`
+subtracting the compile-time pre-sync as contamination and asked for the runtime
+value. But `preamble_bits` reaches the chip in `SetPacketParams`' `PreambleLength`,
+which on the SX126x in GFSK is **what this radio transmits**; reception is armed
+by `PREAMBLE_DETECT_16BIT`. The preamble on a received frame is the sender's,
+every frame this device receives is the hub's, and the hub's is fixed in the
+shared header — so for a received frame the compile-time constant is correct.
+The real defect was the mirror image and is closed: `cmd_downlink` estimated a
+**received** frame's start with the transmit-side helper. Fixed in
+`fix(radio): air time has a direction`, which split the general verb into
+`radio_tx_air_time_us` and `radio_rx_air_time_us`.
+
+**Nothing but the names enforces that split**, so `radio preamble <n>` prints both
+air times: a sweep must move the transmit figure and leave the receive figure
+where it was. That is the check, and it is only visible at the moment of a sweep.
+
+**Why the sweep matters:** 4 -> 8 bytes restores the 1280 µs AGC settling budget
 of the 25 kbps era at unchanged rate, which is the one-sided test of the hub's
-preamble hypothesis in item 34 - one command, no flash, no shared header change.
-Side effect the hub must be told before it attributes frames: key-up is
-unchanged, so **the sync word moves 640 us later inside the slot.**
+preamble hypothesis in item 34. Side effect the hub must be told before it
+attributes frames: key-up is unchanged, so **the sync word moves 640 µs later
+inside the slot**, and the hub's own receive-side air-time arithmetic is correct
+only while this device stays at four bytes.
 
-`Core/Src/radio.c` → `radio_set_preamble`. `radio_devices_docs/radio/phy.md`.
+`Core/Src/radio.c` → `radio_set_preamble`. `radio_devices_docs/radio/phy.md`,
+`radio_devices_docs/wl55_device/radio/driver.md`.
 
 ### 36. A commanded `report_every` does not survive a device reset — `defect` `contract`
 
@@ -678,6 +658,14 @@ and picking differently reads as a tag failure rather than as an addressing
 disagreement.
 
 `Core/Src/cli.c` → `downlink_open`.
+
+**The `dl_served` guard is load-bearing for the crypto, not only for the
+schedule.** The downlink nonce is `(superframe, dev_id, direction, slot)`, and
+for one device in one superframe every one of those is fixed. A second downlink
+to the same device in the same superframe would be the same key and the same
+nonce over a different body. Whatever the contract ends up saying the `slot`
+field means, it must not make that reachable.
+
 
 ### 25. No duty-cycle governor, and it has to be durable — `defect` `contract`
 
@@ -862,20 +850,6 @@ a change to either side's PHY invalidates it and nothing in either tree checks
 that it is still true.
 
 `radio_devices_docs/wl55_device/radio/timebase.md`.
-
-### 39. `RADIO_PRE_SYNC_US` is a second definition of a shared constant — `defect` `contract`
-
-`Core/Inc/radio.h:21` defines it with the same formula and the same inputs as
-`RADIO_PRE_SYNC_AIR_US` in `Common/inc/radio_phy.h`. Two names, one quantity, two
-files. They agree today only because the formula was transcribed, and **nothing
-anywhere checks that they still will** — the 45-vs-49 shape before it goes wrong.
-
-Delete the local one and use the shared macro. Prefer deleting the wrong value to
-testing for it: with one definition there is no second value to disagree.
-
-Found 2026-08-22 while answering the hub's question about item 12.
-
-`radio_devices_docs/wl55_device/radio/driver.md`.
 
 ### 13. The data beacon is unauthenticated — `contract`
 
