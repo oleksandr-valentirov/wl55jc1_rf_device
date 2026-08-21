@@ -31,9 +31,11 @@ def touched_lines():
     return hits
 
 def tracked(changed):
+    """Every file a human owns. --changed always saw untracked ones; the full scan did not."""
     if changed:
         return [f for f in touched_lines() if os.path.isfile(f)]
-    return subprocess.run(["git", "ls-files"], capture_output=True,
+    return subprocess.run(["git", "ls-files", "--cached", "--others",
+                           "--exclude-standard"], capture_output=True,
                           text=True).stdout.split()
 
 def kind(path):
@@ -139,7 +141,7 @@ def main():
     changed = "--changed" in sys.argv
     files = tracked(changed)
     longb, own, cyr, brief = check(files, touched_lines() if changed else None)
-    scope = "lines changed against HEAD" if changed else "all tracked files"
+    scope = "lines changed against HEAD" if changed else "every file a human owns"
     print("scope: %s (%d), generated and vendored excluded\n" % (scope, len(files)))
     for title, items in (("non-English outside CLAUDE.md", cyr),
                          ("comment blocks over 100 characters", longb),
