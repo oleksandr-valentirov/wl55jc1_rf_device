@@ -82,6 +82,18 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
+# What is on the board must be answerable from the board. ROADMAP item 48
+set(BUILD_ID_H "${CMAKE_CURRENT_BINARY_DIR}/generated/build_id.h")
+add_custom_target(build_id ALL
+    BYPRODUCTS "${BUILD_ID_H}"
+    COMMAND ${CMAKE_COMMAND} -DSRC="${CMAKE_CURRENT_SOURCE_DIR}"
+            -DOUT="${BUILD_ID_H}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_id.cmake"
+    COMMENT "Resolving build id from git")
+add_dependencies(${CMAKE_PROJECT_NAME} build_id)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here

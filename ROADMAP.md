@@ -973,6 +973,47 @@ distance damage the clock and not only the SNR.
 
 ---
 
+### 48. The firmware cannot say which build it is — `defect`
+
+`boot` carries `up`, `reset`, `kbps`; `status` prints uptime, clock and reset
+cause; nothing anywhere names the build. So "what is on this board" is not
+answerable from the board, and the only way to know is to remember flashing it.
+
+**It blocked a decision on 2026-08-22.** Item 46's fix was built and could not
+be taken to the air, because flashing might have delivered the whole tail since
+the last flash — including item 41's `SUPERFRAME_PERIOD_BASELINE`, which moves
+the arrival scatter the hub was measuring in the same window. The question was
+not answerable and the flash had to be ordered around it instead.
+
+`RADIO_LINK_VERSION` narrows it and does not close it: the link refuses on a
+mismatch, so a live link proves both sides compile the same **contract**. A
+contract is not a build, and every fix that changes no wire byte is invisible to
+it — which is most of them.
+
+`git describe --always --dirty` at configure time, into a generated header: the
+string on `status`, and the abbreviated commit as an integer field on `boot`, so
+a stream says which build produced it and two boards' logs stay joinable across
+a reflash. The telemetry format takes integers only, so the string belongs on
+the console and the number in the record.
+
+The hub has the same hole and the same cause — its `hello` carries `fw` as a
+name, not a version — and tracks it as its own item 47. Two items, one shape;
+neither inherits the other's fix.
+
+**Fixed in source 2026-08-22, unflashed.** `cmake/build_id.cmake` runs at build
+time rather than at configure time, because a configure-time value goes stale on
+the next commit without anything saying so; it rewrites the header only on a
+change, so nothing rebuilds without cause. `status` prints `git describe
+--always --dirty`, and `boot` carries the abbreviated commit with bit 31 set for
+a dirty tree — the packed form the `sync` field already uses. Verified against a
+clean configure, and non-vacuous: the same generator pointed at the hub's tree
+returns that tree's id, so it reads git rather than emitting a constant.
+
+`cmake/build_id.cmake`, `CMakeLists.txt`, `Core/Src/telemetry.c`,
+`Core/Src/cli.c` → `cmd_status`.
+`radio_devices_docs/wl55_device/testing/telemetry.md`.
+
+
 ## Contract debts
 
 Each of these binds the hub. Agree with the hub session before starting, and

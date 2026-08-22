@@ -38,8 +38,9 @@ static void test_format(void) {
     tlm_reset();
     host_clock_set(1000u);
 
-    tlm_emit(TLM_BOOT, 0u, 0x1C010600u, 50u, 0u);
-    eqline("!0 1000 boot up=0 reset=469829120 kbps=50\r\n");
+    /* A dirty a8d2018: the commit in the low bits and bit 31 set. */
+    tlm_emit(TLM_BOOT, 0u, 0x1C010600u, 50u, 0xA8D2018u | 0x80000000u);
+    eqline("!0 1000 boot up=0 reset=469829120 kbps=50 build=2324504600\r\n");
 
     /* The arm record is the one that can differ from the compiled default. */
     tlm_emit(TLM_TX_ARM, 643552u, (uint32_t)(int32_t)-17, 0xFFu, 8u);

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "build_id.h"
 #include "main.h"
 #include "cli.h"
 #include "timebase.h"
@@ -94,6 +95,8 @@ static void gap_add(gap_stats_t *g, uint32_t gap) {
     g->n++;
 }
 
+#define BUILD_ID_RECORD  (BUILD_ID_COMMIT | (BUILD_ID_DIRTY ? 0x80000000u : 0u))
+
 static int cmd_status(int argc, char **argv) {
     (void)argc; (void)argv;
     out("uptime   %lu s (%lu ms since the TIM2 wrap)\r\n",
@@ -101,6 +104,8 @@ static int cmd_status(int argc, char **argv) {
     out("micros   %lu\r\n", (unsigned long)micros());
     out("clock    %lu Hz\r\n", (unsigned long)HAL_RCC_GetHCLKFreq());
     out("reset    0x%08lX\r\n", (unsigned long)RCC->CSR);
+    out("build    %s (record %lu)\r\n", BUILD_ID_STR,
+        (unsigned long)BUILD_ID_RECORD);
     return 0;
 }
 
@@ -3227,9 +3232,9 @@ void CLI_Init(void) {
     HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(LPUART1_IRQn);
     tlm_emit(TLM_BOOT, timebase_uptime_s(), (uint32_t)RCC->CSR,
-             RADIO_BITRATE_BPS / 1000u, 0u);
+             RADIO_BITRATE_BPS / 1000u, BUILD_ID_RECORD);
     resp_len = 0;
-    out("\r\nwl55 device\r\n>>> ");
+    out("\r\nwl55 device %s\r\n>>> ", BUILD_ID_STR);
     uart_tx( (uint8_t *)resp, (uint16_t)resp_len, 500);
 }
 

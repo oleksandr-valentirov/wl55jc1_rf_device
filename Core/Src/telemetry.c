@@ -21,7 +21,8 @@ typedef struct {
 } tlm_kind_info_t;
 
 static const tlm_kind_info_t kinds[TLM_KIND_COUNT] = {
-    [TLM_BOOT]      = { "boot",     { "up",  "reset", "kbps" }, 0u },
+    /* build: abbreviated commit, bit 31 set when the tree was dirty. */
+    [TLM_BOOT]      = { "boot",     { "up",  "reset", "kbps", "build" }, 0u },
     /* sync: low nibble is sf_sync_t, 0x10 schedulable, 0x20 recovering. */
     [TLM_BEAT]      = { "beat",     { "up",  "sf",    "sync" }, 0u },
     [TLM_SYNC_LOST] = { "sync.lost",{ "sf",  "since", NULL   }, 0u },
