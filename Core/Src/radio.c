@@ -310,8 +310,15 @@ const char *radio_capture_name(void) {
     return capture_irq == IRQ_SYNC_VALID ? "sync" : "preamble";
 }
 
+/* The low-power PA's current limit, which SetPaConfig does not set on this part.
+ * radio_devices_docs/wl55_device/radio/driver.md */
+#define REG_OCP         0x08E7u
+#define OCP_LP_80MA     0x18u
+
 static int set_tx_params(void) {
     uint8_t buf[2] = {(uint8_t)tx_dbm, TX_RAMP_200US};
+    if (radio_write_reg(REG_OCP, OCP_LP_80MA) != 0)
+        return -1;
     return cmd_set(RADIO_SET_TXPARAMS, buf, sizeof(buf));
 }
 

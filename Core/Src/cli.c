@@ -186,14 +186,17 @@ static int cmd_radio(int argc, char **argv) {
     }
     if (argc >= 2 && strcmp(argv[1], "power") == 0) {
         if (argc < 3) {
-            out("power is %d dBm; usage: radio power <-17..14>\r\n", radio_power_dbm());
+            out("power %d dBm commanded, not measured; usage: radio power "
+                "<-17..14>\r\n", radio_power_dbm());
             return 0;
         }
         if (radio_set_power(atoi(argv[2])) != 0) {
             out("usage: radio power <-17..14>\r\n");
             return 0;
         }
-        out("power %d dBm\r\n", radio_power_dbm());
+        /* Commanded: the byte that was sent. A 23 dB command was measured at
+         * the hub as 14. radio_devices_docs/wl55_device/radio/driver.md */
+        out("power %d dBm commanded, not measured\r\n", radio_power_dbm());
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "capture") == 0) {

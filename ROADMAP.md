@@ -1127,40 +1127,52 @@ conclusion: nothing here shows the level caused the loss.
 `radio_devices_docs/radio/tdma.md`.
 
 
-### 53. `radio power` does not deliver the step it is commanded — `defect`
+### 53. A 23 dB power command arrived as 14, and the cause is not yet known — `defect`
 
 Asked for 23 dB down, from +14 to -9 dBm, the hub's ring measured **14 to 15 dB**
-at its input on 2026-08-22. The command took: the console reads back `-9 dBm` and
-the level did move, at the announced superframe 694233 and on that board only.
+at its input on 2026-08-22. The command took: the console reads back `-9 dBm`,
+the level moved, at the announced superframe 694233 and on that board only.
 
-The device configures the low-power PA once, in `radio_configure`, with the
-SX126x datasheet's **+14 dBm** row - `paDutyCycle 0x04, hpMax 0x00, deviceSel
-0x01, paLut 0x01` - and then varies only `SetTxParams`. That table has a
-different `paDutyCycle` for each optimal operating point, so the mapping from the
-`SetTxParams` field to radiated dBm is not one relationship across the range; it
-is one relationship *per PA configuration*, and this driver holds the top one
-while sweeping the field to the bottom.
+**The mechanism this item first named is wrong, and the correction is the useful
+part.** It said the driver holds the datasheet's +14 dBm PA row while sweeping
+`SetTxParams` to the bottom. It does hold that row - and so does ST's own
+reference. `SUBGRF_SetTxParams` in the Cube FW takes `RBI_RFO_LP_MAXPOWER`, which
+is 14 on this board, calls `SetPaConfig(0x04, 0x00, 0x01, 0x01)`, and computes
+`power = 0x0E - (max_power - power)`, **which is the identity at max_power 14**.
+Every value this driver sends is the value ST would send. Reading the vendor
+driver before writing the fix is what stopped it.
 
-**What the evidence supports and what it does not.** The hub's level column was
-independently shown to track a transmit change correctly - item 52's accidental
-+31 dB moved it +32 - so a 23 dB command reading as 14 is not the column being
-deaf. But that check was made at one point on the axis, near the top, and this
-one is a sweep to the bottom; a column honest at +14 is not thereby honest at
--9. The hub's own LNA ladder rules out its front end as the cause: 30 dB of
-receiver gain moved the printed level about 2 dB, which is an input-referred RSSI
-behaving correctly rather than a compressed one.
+**Two candidates remain and the bench does not yet separate them.**
 
-**And the console prints the request, not the result.** `radio power` reports
-`radio_power_dbm()`, which returns the byte that was sent. There is no reading
-anywhere in this firmware that could disagree with it, which is the unfalsifiable
-instrument the verification skill names - and it is why the shortfall had to be
-found from the other side of the antenna. At minimum the command should say the
-value is commanded and not measured.
+The hub's LNA ladder is often quoted as clearing its front end: 30 dB of receiver
+gain moved its printed level about 2 dB, an input-referred RSSI behaving
+correctly. But **that ladder ran at -40 dBm**, after this board had already been
+turned down. The reading in question was taken at **-25**, and nothing has tested
+that point. A compressed reading at -25 reads *low*, so the true step would be
+larger than 14 and closer to the commanded 23 - which is the direction that would
+explain everything without any device-side fault at all.
 
-This blocks any duty-cycle or link-budget argument that assumes the commanded
-level, which is items 22, 25 and 10.
+The other candidate is the SX126x low-power PA's own transfer curve near the
+bottom of its range, which no instrument on this bench has measured. The RTL-SDR
+cannot: its bursts clip at 52 % of samples on the rails, and the gain that clears
+the clipping is below the burst detector's threshold.
 
-`Core/Src/radio.c` → `radio_set_power`, `set_tx_params`, `radio_power_dbm`.
+**One real gap was found while checking, and it is fixed.** `REG_OCP` at 0x08E7
+is never written here, where ST writes 0x18 - 80 mA - on every `SetTxParams` for
+the low-power PA. `SetPaConfig` does not set it on this part. It limits current
+rather than gain, so it is not an explanation for a compressed step, and it is
+corrected because the driver should not differ from the reference in a way nobody
+chose.
+
+**And the instrument half stands unchanged.** `radio power` reported
+`radio_power_dbm()`, which returns the byte that was sent, with no reading
+anywhere in this firmware able to disagree - the unfalsifiable instrument the
+verification skill names, and why the shortfall had to be found from the other
+side of the antenna. It now prints `commanded, not measured`.
+
+Unflashed: the item 41 window is open on both boards and a flash would end it.
+
+`Core/Src/radio.c` -> `radio_set_power`, `set_tx_params`, `radio_power_dbm`.
 `verification` skill § instruments.
 
 ### 52. A reset puts both boards on maximum transmit power, silently — `defect`
