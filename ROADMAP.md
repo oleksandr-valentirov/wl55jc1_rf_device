@@ -309,6 +309,24 @@ Found 2026-08-22 while closing item 21. Nothing on the wire changes either way.
 `Core/Src/store.c` → `store_note_received`,
 `radio_devices_docs/wl55_device/security/replay.md`.
 
+### 43. The live hop is sized by a test vector's constant — `defect`
+
+`hop_init_live()` passes **`HOP_VECTORS_COUNT`** as the channel count for the
+hopping the radio actually uses. That is the hop_v1 fixture's number. The
+contract's number is `RADIO_HOP_COUNT`, in the shared header both firmwares
+compile.
+
+Both are 28 today, so nothing disagrees and nothing will until the grid changes
+size. Then this device keeps 28 while the hub takes the new value, and **every
+channel diverges at once** — different cycle length, different deck, different
+index into it. Not a degradation: a total loss of the link, from a constant that
+was never about the air.
+
+Same shape as the `hop` command answering with the test-vector key, one level
+over: a live path parameterised by a fixture. The fix is one identifier.
+
+`Core/Src/cli.c` → `hop_init_live`. `radio_devices_docs/radio/hopping.md`.
+
 ### 42. The hop channel is computed from the guess and never recomputed — `defect`
 
 `report_service` tunes before it listens, because it has to:
