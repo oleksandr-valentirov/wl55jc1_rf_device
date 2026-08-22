@@ -1087,8 +1087,34 @@ analysis.
 **Agreed with the hub session 2026-08-22: it goes into the shared header, once
 the anchor is trusted.** That waits on item 12 — writing an aim into the contract
 while the boundary it is measured from is in dispute would pin the wrong geometry
-in the one place both sides compile. No experiment is needed for the aim itself,
-only the admission that 700 µs is "half the guard" because half seemed reasonable.
+in the one place both sides compile.
+
+**"No experiment is needed for the aim itself" was written here and is wrong.**
+It was measured on 2026-08-22 from both sides of the antenna at once, and 700 is
+not what leaves:
+
+    node        this side, `off`      hub, from arrival_sync_us
+    0xc4d444aa  634 µs  sd 4  n 114   659 / 616,  n 2
+    0xdcbac6f5  586 µs  sd 5  n 114   574,        n 1
+
+Two instruments sharing no code, no clock and no side of the antenna agree per
+node to 3 and 12 µs, and both put the frame **65 to 115 µs early** against the
+compiled 700. They also reproduce the difference between the boards - 48 µs by
+one instrument, 64 by the other - so the boards genuinely differ and it is not
+one instrument's bias.
+
+`off` is an upper bound on the aim, not an estimate of it: it is measured as
+`micros() - air - slot_at + ramp`, and `ramp` is `air - on_air`, which carries
+the TxDone interrupt latency. The true landing is earlier than the table says,
+which widens the gap rather than closing it.
+
+So the correction is not to the reasoning but to its remedy: writing 700 into the
+shared header would pin a number **neither firmware implements**, which is this
+item's own hazard reappearing inside its own fix. Whatever goes in has to be the
+measured aim or a lead that produces it, and `UPLINK_LEAD_US` is where the error
+is - `2882 - UPLINK_AIM_US + 268` models a ramp and a SetTx lag that together
+overstate the real path by about 100 µs. Landing early eats the guard on the safe
+side, which is why nothing has failed and why nothing found it either.
 
 `verification` skill § know which artifact each assert pins.
 
