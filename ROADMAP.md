@@ -97,6 +97,12 @@ count is `(R - 2*667ms) / w + 1`.
 `radio_slots.h:175` asserts `EVENT_GAP + latch + air < 1000000`, which holds at
 789250 us.
 
+**A floor of roughly 59 % loss is slot-independent and is not timing.** Per-slot
+delivery measured by the hub on 2026-08-22 against 8124 frames sent per slot:
+~41 / 24 / 14 %. Item 41's variance explains the *gradient* between those and
+nothing about why slot 1, with 13 µs of scatter against a 1400 µs guard and 56 dB
+of margin, loses three frames in five. Whatever that is, it is this item's.
+
 **The arithmetic closes and the link does not.** The agreed-window measurement is
 **23 % detected, 20 % accepted** at -17 dBm, per slot 39/15/6 %. At a 20 % first-
 try acceptance rate the deadline is not met in practice whatever the geometry
@@ -602,10 +608,32 @@ clock's rate drifts, and it drifts over minutes, so a long baseline costs two
 fields and buys the accuracy directly. A heavier filter lengthens the response to
 a real rate change as well, which a longer baseline does not.
 
-Waits on the hub's 1500 s sampler: pre-registered here before it landed, sd should
-scale with slot offset in the ratios **1 : 11.3 : 21.6** and the tail should beat
-the Gaussian, because under α = 0.5 one mis-heard beacon replaces half the
-estimate. If sd is flat across slots it is not this.
+**Pre-registration held.** The hub's sampler at n = 23 measured sd **13 / 296 /
+412 µs** against predicted 9 / 104 / 199. sd scales with slot offset rather than
+being flat, which was the stated falsifier; slot 1 landed within 4 µs of a
+prediction made from a population measured months ago for another purpose. The
+far slots run ~2× the prediction, which is the fat tail also stated in advance —
+one residual of 1657 µs in n = 7 is 4 sd at a Gaussian 200 µs and should appear
+once in 30 000.
+
+**Fixed in source, unconfirmed on air.** `SUPERFRAME_PERIOD_BASELINE` is 64: the
+period is measured across a span rather than between consecutive beacons, so one
+timestamp's noise divides by the superframes it covers. `test_period` measures
+the estimate's worst error under ±600 µs of injected timestamp jitter and it is
+graded rather than pass/fail — baseline 1 gives 1166 µs, 8 gives 128, 32 gives
+30, 64 gives 18. Predicted post-fix scatter: **0.2 / 2.0 / 3.8 µs**, from 9 / 104
+/ 199.
+
+**This explains the gradient and not the floor**, and the hub is right to insist
+on the distinction: slot 1 delivers ~41 % while carrying 13 µs of scatter against
+a 1400 µs guard, so something roughly slot-independent is losing ~59 % of frames
+and this variance rides on top of it. Recording item 41 as the cause of
+67 / 38 / 27 would be wrong. The floor is item 4's, and it is not timing.
+
+The flash is coupled to the hub's: `RADIO_LINK_VERSION` went 4 → 5, both sides
+refuse on it before the tag, so node B cannot carry this fix until the hub moves
+too. When it does, the treatment has a predicted direction and the hub cuts its
+series at the superframe of the flash.
 
 `Core/Src/superframe.c`, `Core/Src/cli.c` → `hub_us_to_local`.
 `radio_devices_docs/wl55_device/radio/timebase.md`.

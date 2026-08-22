@@ -27,6 +27,12 @@
 #define SUPERFRAME_PERIOD_MAX_US \
     (SUPERFRAME_US + SUPERFRAME_US / 100u * SUPERFRAME_PERIOD_TOL_PCT)
 
+/* Superframes the period is measured across: one timestamp's noise divides by it.
+ * radio_devices_docs/wl55_device/radio/timebase.md */
+#define SUPERFRAME_PERIOD_BASELINE      64u
+/* Past this the elapsed microseconds wrap, so the span is re-anchored unmeasured. */
+#define SUPERFRAME_PERIOD_BASELINE_MAX  1024u
+
 typedef enum {
     SF_SYNC_NONE = 0,      /* free-running, never heard a beacon */
     SF_SYNC_OK,            /* aligned to a beacon */
@@ -49,6 +55,9 @@ typedef struct {
     uint32_t prev_beacon_us;
     uint32_t prev_counter;
     uint32_t measured_us;   /* 0 until two beacons have been seen */
+    uint32_t ref_beacon_us; /**< the far end of the span the period is measured over */
+    uint32_t ref_counter;
+    uint8_t  have_ref;
     uint8_t  have_prev;
 } superframe_t;
 

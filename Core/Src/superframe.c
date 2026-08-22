@@ -17,6 +17,7 @@ void superframe_start(superframe_t *sf, uint32_t counter, uint32_t period_us,
     sf->state = SF_SYNC_NONE;
     sf->rejected = 0;
     sf->have_prev = 0;
+    sf->have_ref = 0;
     sf->measured_us = 0;
 }
 
@@ -68,6 +69,7 @@ int superframe_align_at(superframe_t *sf, uint32_t counter, uint32_t at_us) {
         if (sf->rejected >= SUPERFRAME_RESYNC_AFTER) {
             sf->aligned = 0;
             sf->have_prev = 0;
+            sf->have_ref = 0;
             sf->measured_us = 0;
             sf->period_us = SUPERFRAME_STUB_US;
         }
@@ -75,24 +77,34 @@ int superframe_align_at(superframe_t *sf, uint32_t counter, uint32_t at_us) {
     }
     uint32_t now = at_us;
 
-    /* The hub's real period, so drift stays small across the beacons a sleeper misses.
+    /* Bootstrap only: two beacons, so scheduling can start before a span exists.
      * radio_devices_docs/wl55_device/radio/timebase.md */
-    if (sf->have_prev && (int32_t)(counter - sf->prev_counter) > 0) {
+    if (sf->measured_us == 0u && sf->have_prev &&
+        (int32_t)(counter - sf->prev_counter) > 0) {
         uint32_t frames = counter - sf->prev_counter;
-        uint32_t elapsed = now - sf->prev_beacon_us;
-        uint32_t per = elapsed / frames;
-        /* Only holds if the hub transmits at a fixed offset; a far estimate is a bad sample.
-         * radio_devices_docs/wl55_device/radio/timebase.md */
-        uint32_t ref = sf->measured_us ? sf->measured_us : per;
-        uint32_t spread = (per > ref) ? (per - ref) : (ref - per);
-        if (spread * 8u > ref)
-            per = 0;
+        uint32_t per = (now - sf->prev_beacon_us) / frames;
         if (per >= SUPERFRAME_PERIOD_MIN_US && per <= SUPERFRAME_PERIOD_MAX_US) {
-            /* Averaged in: one beacon heard late should nudge the estimate, not replace it.
-             * radio_devices_docs/wl55_device/radio/timebase.md */
-            sf->measured_us = sf->measured_us ? (sf->measured_us + per) / 2u : per;
-            sf->period_us = sf->measured_us;
+            sf->measured_us = per;
+            sf->period_us = per;
         }
+    }
+    /* The span, not the last pair: the noise scales the offsets it multiplies.
+     * radio_devices_docs/wl55_device/radio/timebase.md */
+    if (!sf->have_ref) {
+        sf->ref_beacon_us = now;
+        sf->ref_counter = counter;
+        sf->have_ref = 1;
+    } else if ((int32_t)(counter - sf->ref_counter) >=
+               (int32_t)SUPERFRAME_PERIOD_BASELINE) {
+        uint32_t frames = counter - sf->ref_counter;
+        uint32_t per = (now - sf->ref_beacon_us) / frames;
+        if (frames <= SUPERFRAME_PERIOD_BASELINE_MAX &&
+            per >= SUPERFRAME_PERIOD_MIN_US && per <= SUPERFRAME_PERIOD_MAX_US) {
+            sf->measured_us = per;
+            sf->period_us = per;
+        }
+        sf->ref_beacon_us = now;
+        sf->ref_counter = counter;
     }
     sf->prev_beacon_us = now;
     sf->prev_counter = counter;
