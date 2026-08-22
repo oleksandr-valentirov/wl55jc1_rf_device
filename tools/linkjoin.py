@@ -98,6 +98,7 @@ class Hub:
         self.base = base.rstrip("/")
         self.fields = {}
         self.cursor = 0
+        self.boot_id = None
         self.arrivals = []
         self.substituted = 0
         self.lock = threading.Lock()
@@ -125,10 +126,20 @@ class Hub:
                 (k, v.get("value")) for k, v in dev["fields"].items())
 
     def rxdiag(self):
-        """The hub's receive counters, for the ladder below the join."""
+        """The hub's receive counters, and the boot they were counted under.
+
+        A hub reset restarts the superframe and zeroes these counters, so rows
+        either side of one are two populations and the ladder is a difference
+        between them. The events cursor carries no boot, so the id is read here
+        - the two calls that bracket a run are the two ends of the check.
+        """
         try:
-            diag = self.get("/api/hub")["rxdiag"]
-        except (urllib.error.URLError, OSError, ValueError, KeyError):
+            hub = self.get("/api/hub")
+        except (urllib.error.URLError, OSError, ValueError):
+            return None
+        self.boot_id = (hub.get("hello") or {}).get("boot_id", self.boot_id)
+        diag = hub.get("rxdiag")
+        if not isinstance(diag, dict):
             return None
         return dict((k, v.get("value")) for k, v in diag.items()
                     if isinstance(v.get("value"), int))
@@ -331,6 +342,8 @@ def main():
     hub = Hub(args.server)
     hub.seed()
     diag_before = hub.rxdiag()
+    boot_before = hub.boot_id
+    print("hub boot %s" % (boot_before if boot_before is not None else "not reported"))
 
     records, stop = [], threading.Event()
     reader = threading.Thread(target=device_reader,
@@ -418,8 +431,16 @@ def main():
     finally:
         stop.set()
         flush(time.time() + 1.0)
-        summarise(rows, lost, g, hub_only, hub.substituted)
-        ladder(diag_before, hub.rxdiag(), len(rows))
+
+    diag_after = hub.rxdiag()
+    if boot_before is not None and hub.boot_id != boot_before:
+        print("\n! the hub reset during this window: boot %s -> %s"
+              % (boot_before, hub.boot_id))
+        print("! superframes restart and the ladder counters zero, so the rows above"
+              " are two populations. No summary is printed: re-run inside one boot.")
+        return 2
+    summarise(rows, lost, g, hub_only, hub.substituted)
+    ladder(diag_before, diag_after, len(rows))
     return 0
 
 
