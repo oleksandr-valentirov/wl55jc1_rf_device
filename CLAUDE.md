@@ -56,6 +56,7 @@ No RTOS: `main()` initialises and then polls the console.
 
 ```bash
 tools/check_conventions.sh
+tools/test_check_conventions.py  # 13 плечей; кожне падає, коли прибрати його правило
 tools/check_docs.py            # чи існує ще те, що документація називає
 tools/test_check_docs.py       # спільний корпус: чи погоджуються дві копії чекера
 ```
