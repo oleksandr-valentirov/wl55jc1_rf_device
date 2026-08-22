@@ -820,6 +820,31 @@ than whether it survived: the within-cycle slopes and their signs. Those stand.
 The next attempt needs the transmit level fixed and announced on both boards
 before the window opens, or the denominator moves with the treatment again.
 
+**No before/after design can measure this, and that is now measured rather than
+suspected.** In a window where node A was not touched at all, its delivery rate
+held - 14.2 % against 13.3 %, p = 0.79 - while its *composition* moved: accepted
+frames went 19/9/4 across k to 27/4/0, chi² 7.30 on 2 df, **p = 0.026**, and
+pooled over both boards 19/11/5 to 37/5/1 at p = 0.007. Nothing was changed on A
+between those two windows. The hub measured the same instability in the morning
+from its own side, four equal windows delivering 36/12/16/19 against ~108
+expected, P = 0.0008.
+
+So the k-gradient - the quantity item 41 predicts a change in - **varies between
+windows on its own**, and a control specified on the aggregate rate does not
+catch it. That was this session's control, and it passed while the composition
+moved underneath it.
+
+**The design that would work separates treatment by board rather than by time**:
+one board on the old firmware and one on the new, in a single window, so the
+channel's non-stationarity hits both equally and the comparison is between boards
+at the same moment. That is not available today because **both boards were
+flashed at 15:33**, so no untreated board exists; producing one costs a rollback
+flash and, by item 38, 33 minutes of that board's silence, plus hours of
+collection because the unit is a cycle with two or three accepted opportunities
+and the boards are currently delivering k=0 almost exclusively.
+
+Recorded rather than run: the cost is a bench decision, not a code one.
+
 **And the statistic being graded was the wrong one, which is the run's real
 finding.** The hub recomputed the residual gradient *within* each superframe -
 three opportunities sharing one beacon, one anchor, one period estimate and one
@@ -1101,6 +1126,42 @@ conclusion: nothing here shows the level caused the loss.
 `Core/Src/cli.c` → `beacon_rssi_note`, `report_service`, `recover_take`.
 `radio_devices_docs/radio/tdma.md`.
 
+
+### 53. `radio power` does not deliver the step it is commanded — `defect`
+
+Asked for 23 dB down, from +14 to -9 dBm, the hub's ring measured **14 to 15 dB**
+at its input on 2026-08-22. The command took: the console reads back `-9 dBm` and
+the level did move, at the announced superframe 694233 and on that board only.
+
+The device configures the low-power PA once, in `radio_configure`, with the
+SX126x datasheet's **+14 dBm** row - `paDutyCycle 0x04, hpMax 0x00, deviceSel
+0x01, paLut 0x01` - and then varies only `SetTxParams`. That table has a
+different `paDutyCycle` for each optimal operating point, so the mapping from the
+`SetTxParams` field to radiated dBm is not one relationship across the range; it
+is one relationship *per PA configuration*, and this driver holds the top one
+while sweeping the field to the bottom.
+
+**What the evidence supports and what it does not.** The hub's level column was
+independently shown to track a transmit change correctly - item 52's accidental
++31 dB moved it +32 - so a 23 dB command reading as 14 is not the column being
+deaf. But that check was made at one point on the axis, near the top, and this
+one is a sweep to the bottom; a column honest at +14 is not thereby honest at
+-9. The hub's own LNA ladder rules out its front end as the cause: 30 dB of
+receiver gain moved the printed level about 2 dB, which is an input-referred RSSI
+behaving correctly rather than a compressed one.
+
+**And the console prints the request, not the result.** `radio power` reports
+`radio_power_dbm()`, which returns the byte that was sent. There is no reading
+anywhere in this firmware that could disagree with it, which is the unfalsifiable
+instrument the verification skill names - and it is why the shortfall had to be
+found from the other side of the antenna. At minimum the command should say the
+value is commanded and not measured.
+
+This blocks any duty-cycle or link-budget argument that assumes the commanded
+level, which is items 22, 25 and 10.
+
+`Core/Src/radio.c` → `radio_set_power`, `set_tx_params`, `radio_power_dbm`.
+`verification` skill § instruments.
 
 ### 52. A reset puts both boards on maximum transmit power, silently — `defect`
 
