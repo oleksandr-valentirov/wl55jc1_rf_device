@@ -973,6 +973,42 @@ distance damage the clock and not only the SNR.
 
 ---
 
+### 46. `rssi_down` is only ever measured by a typed command — `defect`
+
+`beacon_rssi_valid` is set at three sites, and all three are console commands:
+`cmd_time` twice and `cmd_downlink` once. It is never cleared, so it latches —
+but on a device nobody types at, it never latches at all. `report_service`
+receives the beacon into `info`, emits `TLM_RX_BEACON` from it, and does not
+store `info.rssi_dbm`; five lines later it reports
+`rep.rssi_down = beacon_rssi_valid ? beacon_rssi_dbm : 0`.
+
+So an autonomous device reports **a literal zero, for ever**, while hearing a
+beacon every cycle with the level in hand. Confirmed on air 2026-08-22: both
+nodes read `report_flags=3`, labels `rssi_stale` and `supply_stale`, and
+`rssi_down_dbm` 0 on the hub's API, through a whole day of accepted beacons.
+
+`RADIO_REPORT_FLAG_RSSI_STALE` is documented as "rssi_down is a last value, not
+a sentinel". That is false in this state: it is not a stale reading, it is a
+reading that was never taken. The hub reasonably reads the flag's contract and
+serves the zero rather than hiding it, which is how a never-measured number
+reaches an API as data. **Hiding it on the hub would paper over this**; the fix
+is on this side, and is one assignment in the path that already has the value.
+
+This is item 1's shape again — a value that exists only if an operator typed
+something — and it is the term the downlink budget would be sized from.
+
+**Fixed in source 2026-08-22, unflashed.** The pointed-at fix was one path; the
+sweep found **six** that accept a beacon and **three** that recorded nothing —
+`report_service`, `recover_service`, and the sweep inside `cmd_time`. All six now
+go through one `beacon_rssi_note`, so a new beacon path cannot forget. Recovery
+already carried the level into its `rec.hit` record and dropped it afterwards.
+Flashing waited on the hub's item 45 measurement, because this tree also carries
+item 41, which moves the arrival scatter the hub is measuring.
+
+`Core/Src/cli.c` → `beacon_rssi_note`, `report_service`, `recover_take`.
+`radio_devices_docs/radio/tdma.md`.
+
+
 ### 48. The firmware cannot say which build it is — `defect`
 
 `boot` carries `up`, `reset`, `kbps`; `status` prints uptime, clock and reset

@@ -667,6 +667,13 @@ static void time_start(void) {
 static int8_t beacon_rssi_dbm;
 static uint8_t beacon_rssi_valid;
 
+/** @brief Records an accepted beacon's level, from whichever path heard it. */
+static void beacon_rssi_note(int16_t dbm)
+{
+    beacon_rssi_dbm  = (int8_t)dbm;
+    beacon_rssi_valid = 1u;
+}
+
 static int join_is_paired(void);
 static int hop_channel_live(uint32_t sf, uint8_t *ch);
 
@@ -774,8 +781,7 @@ static int cmd_time(int argc, char **argv) {
                 (long)sframe.refused_jump);
             return 0;
         }
-        beacon_rssi_dbm = info.rssi_dbm;
-        beacon_rssi_valid = 1;
+        beacon_rssi_note(info.rssi_dbm);
         /* The cost, not the error: what the grid is no longer charged since done_us.
          * radio_devices_docs/wl55_device/radio/timebase.md */
         out("post-RxDone SPI %lu us, excluded from the alignment\r\n",
@@ -863,6 +869,7 @@ static int cmd_time(int argc, char **argv) {
                 missed++;
                 continue;
             }
+            beacon_rssi_note(info.rssi_dbm);
             if (!info.capture_valid) {
                 out("grid %u: RxDone but no capture edge\r\n", (unsigned)grid);
                 continue;
@@ -931,8 +938,7 @@ static int cmd_time(int argc, char **argv) {
             out("\r\n");
             return 0;
         }
-        beacon_rssi_dbm = info.rssi_dbm;
-        beacon_rssi_valid = 1;
+        beacon_rssi_note(info.rssi_dbm);
         out("aligned to %lu from %lu (%+ld)  rssi %d dBm\r\n",
             (unsigned long)aligned, (unsigned long)before,
             (long)(int32_t)(aligned - before), info.rssi_dbm);
@@ -2471,8 +2477,7 @@ static int cmd_downlink(int argc, char **argv) {
             if (radio_receive(rx, sizeof(rx), &info) == 0) {
                 uint32_t got = 0;
                 if (beacon_apply(rx, info.len, &sframe, &quiesce, info.start_us, &got) == BEACON_OK) {
-                    beacon_rssi_dbm = info.rssi_dbm;
-                    beacon_rssi_valid = 1;
+                    beacon_rssi_note(info.rssi_dbm);
                     out("re-aligned to %lu on grid %u  rssi %d dBm\r\n",
                         (unsigned long)got, (unsigned)grid0, info.rssi_dbm);
                 }
@@ -2686,6 +2691,7 @@ static int recover_take(const uint8_t *rx, const radio_rx_info_t *info, uint8_t 
     }
     recover_last_rc = BEACON_OK;
     recover_park_sf = aligned;
+    beacon_rssi_note(info->rssi_dbm);
     tlm_emit(TLM_REC_HIT, aligned, grid, (uint32_t)(int32_t)info->rssi_dbm, 0u);
     if (aligned != before)
         tlm_emit(TLM_SYNC_JUMP, aligned, before, (uint32_t)(int32_t)(aligned - before), 0u);
@@ -2896,6 +2902,7 @@ void report_service(void) {
         tlm_emit(TLM_RX_MISS, sf, info.timeout_us, grid, 0u);
         return;
     }
+    beacon_rssi_note(info.rssi_dbm);
     /* One per cycle: denominator, window, and whether the stamp was captured. */
     tlm_emit(TLM_RX_BEACON, sf, info.timeout_us,
              (info.capture_valid && info.capture_sync) ? 0u : 1u, 0u);
