@@ -97,6 +97,12 @@ count is `(R - 2*667ms) / w + 1`.
 `radio_slots.h:175` asserts `EVENT_GAP + latch + air < 1000000`, which holds at
 789250 us.
 
+**Part of the floor is the hub's front end, measured, and it is not enough.**
+Item 34 is confirmed with a control that closed: dropping the hub's LNA from AGC
+to G6 lifts per-frame delivery 23 % → 34 %, which is 54 % → 71 % for at least one
+of three opportunities. **The requirement needs 78 % per frame for 99 % in one
+superframe.** A real gain, a third of the way, and this item stays blocking.
+
 **A floor of roughly 59 % loss is slot-independent and is not timing.** Per-slot
 delivery measured by the hub on 2026-08-22 against 8124 frames sent per slot:
 ~41 / 24 / 14 %. Item 41's variance explains the *gradient* between those and
@@ -362,7 +368,54 @@ this side's data excludes as a cause.
 
 `Core/Src/cli.c` → `report_service`. `radio_devices_docs/radio/hopping.md`.
 
-### 34. Low power turns the link on; the AGC explanation is weak and this PA is not cleared — `blocking` `hub`
+### 34. Front-end overload confirmed, and it does not close item 4 — `hub`
+
+**Confirmed on 2026-08-22 with a control that closed.** The hub stepped its LNA
+by hand across two runs whose block orders were reverses of each other, so gain
+and elapsed time pointed the same way in one and opposite ways in the other:
+
+    gain   run 1 (gain down)  run 2 (gain up)
+    AGC          10.29             10.32     arrivals/min
+    G2           11.03             11.18
+    G4           17.06             15.29
+    G6           21.76             15.15
+                                   G6-return 14.12 against opening 15.15
+
+**AGC measured at the start of one run and near the end of the other, ninety
+minutes apart, agrees to 0.3 %; G2 to 1 %.** The baseline is steady, so run 1's
+apparent drift was two high blocks and not a moving reference. Run 2's monotone
+fall as gain rises cannot be drift, because drift would have lifted it.
+
+The denominator is this side's and was measured off the air rather than taken
+from these counters: 45 frames a minute, flat across every block, and this
+device's own transmit rate held at 224-225 per five minutes with the beacon
+window flat to 6 µs in 47 810 for the whole of run 1. The precondition was on the
+part all along — `RegLna = 0x08`, AGC enabled, selecting **maximum gain on every
+frame at −42 dBm**, 107 of 107.
+
+**Best estimate: +47 % delivery, 23 % to 34 % per frame.**
+
+**And that is the number this item exists to put next to the requirement.** Item
+4 needs an event delivered inside 1 s, which is one superframe, which is three
+opportunities:
+
+    per-frame 22.9 %  ->  at least one of three  54.2 %
+    per-frame 33.7 %  ->  at least one of three  70.8 %
+
+    for 99 % in one superframe, per-frame must be 78 %
+
+**A real +17 pp on the thing that matters, and still 28 pp short of the
+requirement.** The `blocking` tag moves to item 4, which owns the floor; this
+item stops being a blocker and becomes a measured contribution with a mechanism.
+
+Two things it does not explain and that are not modelled away: two of run 1's
+blocks read 10 % and 30 % high at the two largest attenuations with nothing in
+run 2 reproducing it, and the remaining ~66 % per-frame loss at G6.
+
+The original A-B-C that opened this item, kept because the arms are still the
+evidence that low power turned the link on at all:
+
+### 34a. The original power experiment
 
 Dropping this device from +14 to -17 dBm turned the link on. A-B-C on matched
 counts, 36 frames a side, brackets agreed with the hub session in advance:
