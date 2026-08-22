@@ -9,7 +9,17 @@ GENERATED = re.compile(
     r"|syscalls\.c|sysmem\.c|startup_)")
 # Vector files are emitted by tools/; the generator is the hand-written artifact.
 GENERATED_VEC = re.compile(r"^$")   # the vectors are the hub's; nothing here emits them
-PREFIX = {".c": "//", ".h": "//", ".py": "#", ".sh": "#", ".cmake": "#"}
+PREFIX = {".c": "//", ".h": "//", ".py": "#", ".sh": "#", ".cmake": "#",
+          ".ld": "/*"}
+
+# /* */ blocks. Only C treats a leading * as a continuation; in a linker script
+# that character opens a wildcard.
+CSTYLE = {".c", ".h", ".ld"}
+
+# Typography an English page uses; other non-ASCII is prose in another language.
+ALLOWED_NON_ASCII = set("\u2014\u2013\u2212\u2192\u00a7\u2248\u00d7\u00b1"
+                        "\u2264\u2265\u00b2\u00b3\u00b0\u00b5\u03a9\u0394"
+                        "\u03c3\u03c7\u03b1")
 
 def touched_lines():
     """Line numbers added or changed against HEAD, per file. None = whole file."""
@@ -69,32 +79,38 @@ def handwritten(text):
     return own
 
 def check(files, only=None):
-    long_blocks, own_line, cyrillic, long_brief = [], [], [], []
+    long_blocks, own_line, foreign, long_brief = [], [], [], []
     for p in files:
         if GENERATED.search(p) or GENERATED_VEC.search(p) or not os.path.isfile(p):
-            continue
-        pfx = kind(p)
-        if pfx is None:
             continue
         try:
             text = open(p, errors="replace").read()
         except OSError:
             continue
-        if p != "CLAUDE.md" and re.search("[\u0400-\u04ff]", text):
-            cyrillic.append(p)
+        # Before the prefix lookup: .md and .ld have none, and were never checked.
+        if p != "CLAUDE.md":
+            bad = sorted({c for c in text if ord(c) > 127} - ALLOWED_NON_ASCII)
+            if bad:
+                foreign.append("%s (%s)" % (p, " ".join(bad)[:40]))
+        pfx = kind(p)
+        if pfx is None:
+            continue
         mine = handwritten(text)
         # Shell and CMake are not tokenizable; only Python gets the string check.
         hashes = hash_comment_lines(text) if p.endswith(".py") else None
+        cstyle = os.path.splitext(p)[1] in CSTYLE
+        star_cont = pfx == "//"
         run, start, incomment = [], 0, False
         for n, line in enumerate(text.split("\n") + [""], 1):
             st = line.strip()
             # A USER CODE marker is structure, not a comment: it must not open a block.
             marker = "USER CODE BEGIN" in st or "USER CODE END" in st
-            iscomment = not marker and (st.startswith(pfx) or (pfx == "//" and
-                                        (st.startswith("/*") or st.startswith("*"))))
+            iscomment = not marker and (st.startswith(pfx) or (cstyle and
+                                        st.startswith("/*")) or (star_cont and
+                                        st.startswith("*")))
             # A /* */ body counts to its close, or a continuation dodges the limit
             # by not opening with a star.
-            if pfx == "//":
+            if cstyle:
                 if incomment:
                     iscomment = True
                 if iscomment and "/*" in st and "*/" not in st.split("/*", 1)[1]:
@@ -111,7 +127,9 @@ def check(files, only=None):
             # A documentation path is exempt: CLAUDE.md allows it in full.
             body = re.sub(r"radio_devices_docs/[A-Za-z0-9_./-]+", "", " ".join(run))
             span = set(range(start, n))
-            mineok = run and (mine is None or start in mine)
+            # CubeMX writes and rewrites this banner; the .ld has no markers.
+            vendor = len(run) > 1 and run[0] == "/*" and run[1].startswith("**")
+            mineok = run and not vendor and (mine is None or start in mine)
             onlyok = only is None or only.get(p) is None or (span & only[p])
             # A Doxygen block's limit is per @brief, not per block.
             if mineok and run[0].startswith("/**") and not run[0].startswith("/**<"):
@@ -135,15 +153,15 @@ def check(files, only=None):
                         continue
                     if only is None or only.get(p) is None or n in only[p]:
                         own_line.append("%s:%d" % (p, n))
-    return long_blocks, own_line, cyrillic, long_brief
+    return long_blocks, own_line, foreign, long_brief
 
 def main():
     changed = "--changed" in sys.argv
     files = tracked(changed)
-    longb, own, cyr, brief = check(files, touched_lines() if changed else None)
+    longb, own, bad, brief = check(files, touched_lines() if changed else None)
     scope = "lines changed against HEAD" if changed else "every file a human owns"
     print("scope: %s (%d), generated and vendored excluded\n" % (scope, len(files)))
-    for title, items in (("non-English outside CLAUDE.md", cyr),
+    for title, items in (("non-ASCII outside CLAUDE.md and the allowed typography", bad),
                          ("comment blocks over 100 characters", longb),
                          ("struct-field comments on their own line", own),
                          ("Doxygen @brief over 100 characters", brief)):
@@ -152,6 +170,6 @@ def main():
             print("   " + i)
         if len(items) > 15:
             print("   ... and %d more" % (len(items) - 15))
-    return 1 if (longb or own or cyr or brief) else 0
+    return 1 if (longb or own or bad or brief) else 0
 
 sys.exit(main())

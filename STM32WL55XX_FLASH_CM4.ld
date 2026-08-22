@@ -11,8 +11,8 @@ ENTRY(Reset_Handler)
 /* Memories definition */
 MEMORY
 {
-  /* The last two 2K pages are the key store. Shrinking ROM here is what stops
-     the linker from ever placing code in them; store.c owns the addresses. */
+  /* The last two 2K pages are the key store; store.c owns the addresses.
+     radio_devices_docs/wl55_device/arch/store.md */
   ROM    (rx)    : ORIGIN = 0x08000000, LENGTH = 252K
   STORE  (r)     : ORIGIN = 0x0803F000, LENGTH = 4K
   RAM1   (xrw)   : ORIGIN = 0x20000000, LENGTH = 32K    /* Non-backup SRAM1 */
