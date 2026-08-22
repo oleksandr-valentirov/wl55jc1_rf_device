@@ -778,6 +778,50 @@ refuse on it before the tag, so node B cannot carry this fix until the hub moves
 too. When it does, the treatment has a predicted direction and the hub cuts its
 series at the superframe of the flash.
 
+**Flashed 2026-08-22 15:33. The pre-registration's own falsifier fired, so the
+scatter result is not kept.** Both windows were taken with `linkjoin`, both
+boards, all three opportunities, cut at superframe 693392 rather than at the
+flash timestamp because the reset itself costs ten minutes (item 38):
+
+    board  window   accepted  sent   delivery   Fisher two-sided
+    (regraded by `tools/linkgrade.py`, one formula over both windows)
+    A      before      12      114     10.5 %
+    A      after       32      225     14.2 %   p = 0.39   not significant
+    B      before      10      114      8.8 %
+    B      after        3      222      1.4 %   p = 0.0016 FELL
+
+F4 was written as "delivery falls on any k → report the fall; do not keep the sd
+result", and it fired on B by a factor of six. **The scatter and slope numbers
+from this run are therefore not quoted**, and the pre-registered P1 was not
+powered in any case: k=2 yielded n=5 against the n≥8 the registration required.
+
+Two boards, one flash, opposite directions, and the larger movement is the
+adverse one. Whatever the treatment did, it is not board-independent, so nothing
+here separates it from the reboot, the re-arming, or the hop phase each board
+landed on.
+
+**And the statistic being graded was the wrong one, which is the run's real
+finding.** The hub recomputed the residual gradient *within* each superframe -
+three opportunities sharing one beacon, one anchor, one period estimate and one
+`calib` scale - and the slope **changes sign from cycle to cycle**, on both
+boards, in both windows: 8 positive and 6 negative over 14 cycles. A constant
+rate divergence cannot do that. So the pooled slope, which this item's own
+reasoning invited, was measuring the *mean of a noisy quantity* rather than a
+rate, and `+537` on A against `+96` on B was two boards averaged, not two
+behaviours.
+
+The quantity to grade is the **sd of the within-cycle slopes**, and it is free of
+the hub's `calib` drift (~120 ppm over half an hour, up to 155 µs at k=2) because
+one cycle's three arrivals are read within 1.27 s on one scale. Neither side has
+a "before" population for it: A had 2 such cycles and B had 3, against A's 9
+after and B's none.
+
+The unit of this experiment is therefore **a cycle with two or three accepted
+opportunities**, not an accepted frame, and 38 cycles on two boards produced five
+of them. A pre-registration that plans power in frames plans it in the wrong
+unit; the next attempt needs delivery, not time, and the power calculation has to
+be done on the corrected statistic before the window opens rather than after.
+
 `Core/Src/superframe.c`, `Core/Src/cli.c` → `hub_us_to_local`.
 `radio_devices_docs/wl55_device/radio/timebase.md`.
 
@@ -988,7 +1032,7 @@ distance damage the clock and not only the SNR.
 
 ---
 
-### 46. `rssi_down` is only ever measured by a typed command — `defect`
+### 46. `rssi_down` is only ever measured by a typed command — `closed 2026-08-22`
 
 `beacon_rssi_valid` is set at three sites, and all three are console commands:
 `cmd_time` twice and `cmd_downlink` once. It is never cleared, so it latches —
@@ -1019,6 +1063,20 @@ go through one `beacon_rssi_note`, so a new beacon path cannot forget. Recovery
 already carried the level into its `rec.hit` record and dropped it afterwards.
 Flashing waited on the hub's item 45 measurement, because this tree also carries
 item 41, which moves the arrival scatter the hub is measuring.
+
+**Closed on air 2026-08-22.** Before the flash both nodes served `rssi_down_dbm`
+0 with `report_flags` 3, labels `rssi_stale` and `supply_stale`. Twenty minutes
+after it, with nobody typing anything: **−44 dBm and −20 dBm, and `rssi_stale` is
+gone from both.** `supply_stale` remains and is a different item.
+
+**The first number the fix produced is a lead on something else.** Node
+0xdcbac6f5 hears the hub's beacon at **−20 dBm**, 24 dB above node 0xc4d444aa's
+−44, and it is the board whose uplink delivery fell from 8.8 % to 1.4 % in the
+same window (item 41 above). Its uplink also reaches the hub at −48 against the
+other board's −72 — the same 24 dB, in the other direction. A pair that close to
+the hub is what item 34 predicts trouble for, and none of this was measurable
+yesterday because the number was a literal zero. It is a lead and not a
+conclusion: nothing here shows the level caused the loss.
 
 `Core/Src/cli.c` → `beacon_rssi_note`, `report_service`, `recover_take`.
 `radio_devices_docs/radio/tdma.md`.
