@@ -99,6 +99,7 @@ class Hub:
         self.fields = {}
         self.cursor = 0
         self.arrivals = []
+        self.substituted = 0
         self.lock = threading.Lock()
 
     def get(self, path):
@@ -166,8 +167,14 @@ class Hub:
                 continue
             dev_id = ev.get("dev_id")
             state = self.fields.get(dev_id, {})
-            # An arrival identical to the last one is diffed away, so state stands in.
-            arrival = changed.get(dev_id, {}).get("arrival_us", state.get("arrival_us"))
+            # A substituted value is the previous frame's and reads as a measurement.
+            fresh = changed.get(dev_id, {})
+            if "arrival_us" in fresh:
+                arrival = fresh["arrival_us"]
+            else:
+                arrival = state.get("arrival_us")
+                if arrival is not None:
+                    self.substituted += 1
             sf = state.get("last_superframe")
             if arrival is None or sf is None:
                 continue
@@ -246,7 +253,7 @@ def whole_cycle_histogram(rows, g):
           % (100.0 * (n - hist[0]) / n, 100.0 * (1 - (1 - q) ** g["SLOT_OPPS"])))
 
 
-def summarise(rows, lost, g, hub_only):
+def summarise(rows, lost, g, hub_only, substituted):
     """Per opportunity, and never a delivery figure without both of its halves."""
     print("\n%-3s %6s %6s %9s   %-22s   %-22s"
           % ("k", "tx", "rx", "delivery", "device off (us)", "hub - nominal (us)"))
@@ -288,6 +295,9 @@ def summarise(rows, lost, g, hub_only):
         print("! %d device record(s) lost on the VCP: the tx count is a floor" % lost)
     if hub_only:
         print("! %d hub arrival(s) had no device record in the window" % hub_only)
+    if substituted:
+        print("! %d arrival(s) carried the previous frame's value, not their own:"
+              " the server's diff omitted the field" % substituted)
 
     print("""
 Read before quoting:
@@ -408,7 +418,7 @@ def main():
     finally:
         stop.set()
         flush(time.time() + 1.0)
-        summarise(rows, lost, g, hub_only)
+        summarise(rows, lost, g, hub_only, hub.substituted)
         ladder(diag_before, hub.rxdiag(), len(rows))
     return 0
 
