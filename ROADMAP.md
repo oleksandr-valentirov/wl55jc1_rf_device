@@ -561,37 +561,54 @@ the pre-command rate beside a grant of 2 for another six minutes.
 
 `radio_devices_docs/radio/tdma.md`.
 
-### 35. `micros()` runs 2381 ppm fast and the slot offsets do not scale — `defect`
+### 41. Item 35's fix injects the period estimate's noise, amplified by slot offset — `defect`
 
-`sync.ok` carries `per`, this device's measurement of the hub's superframe.
-Across 57 of them: **mean 2004762 us against a `SUPERFRAME_US` of exactly
-2000000**, min 2003459, max 2006079. That is not a period measurement, it is a
-comparison of this clock against the hub's, and it has been printed in every
-record since telemetry existed while being read as "the period".
+**Item 35 is closed.** `hub_us_to_local` scales every hub microsecond by
+`measured_us / SUPERFRAME_US`, and the hub measured this side's arrival residual
+from its own grid on 2026-08-22 as **+614 / +1240 / +790 µs** for slots 1 / 66 /
+131 — flat means, and the sign is wrong for the defect, which predicted
+−141 / −1596 / −3051. That is the post-fix confirmation the item owed, taken
+from the other side of the antenna on current firmware with no flash.
 
-Short microseconds make every scheduled offset arrive early in proportion:
+**What replaced it is the same lever arm applied to variance.** `measured_us` is
+a per-superframe measurement — `elapsed / frames` between *consecutive* beacons,
+so `frames` is 1 and one timestamp's noise lands on the estimate undivided — and
+the filter is `measured_us = (measured_us + per) / 2`, which is α = 0.5 and
+reduces sd only by 0.577. Item 35's own recorded population of `per` (57 samples,
+2003459..2006079) is sd ≈ 539 µs ≈ 270 ppm, so the estimate carries ≈ 156 ppm.
 
-    slot 1     59400 us  ->  -141 us
-    slot 66   670400 us  -> -1596 us
-    slot 131 1281400 us  -> -3051 us
+Multiplying an offset by a scale that noisy scatters the slot time in proportion
+to the offset:
 
-The hub's `synctime`, DIO3 `SyncAddressMatch` timestamped in its ISR, measures
-the spread between slot 1 and slot 131 as **-2473 us** against **-2910**
-predicted - same sign, same order, 57 samples here against two single edges
-there. Slot 131 already breaks its 1400 us guard on the early side.
+    slot 1     59400 us  ->  sd    9 us
+    slot 66   670400 us  ->  sd  104 us
+    slot 131 1281400 us  ->  sd  199 us
 
-**Fixed in `feat(timebase)`, `pre-squash-2026-08-21`.** `hub_us_to_local` scales by
-`measured_us / SUPERFRAME_US` at the three sites that spend hub microseconds.
-The device had been measuring its own clock error against the hub every
-superframe and not using it for the one thing it is for. A third, independent
-pre-fix baseline on fresh hub counters read the spread short by **2602 us**
-against 2910 predicted. **Post-fix confirmation is still owed** - the hub's
-`min`/`max` are cumulative since boot, so it must reflash before the population
-is post-fix. Pre-fix baseline, banked on fresh hub counters: spread short by
-**2602 us** against 2910 predicted.
+`RADIO_SLOT_GUARD_US` is 1400 and a frame starting at residual R ends at R + 8000
+in a 9400 µs slot, so R > 1400 overruns into the next slot. **The hub measured a
+1657 µs residual at slot 131** in its first eleven samples, already over.
 
-Distinct from item 12's anchor and separable by that instrument: the slope
-collapses the spread, the anchor moves the mean. `radio_devices_docs/wl55_device/radio/timebase.md`.
+**This is invisible from this side by construction.** `off = micros() - air -
+slot_at` is measured against this device's own `slot_at`, so an error in the
+belief moves the frame and leaves `off` reading 600. Measured over 8124 samples
+per slot: ranges 56 / 56 / 54 µs, identical and tight, and evidence about the
+scheduler's precision rather than about where the frame landed. Only the hub
+measures against the grid.
+
+**The fix is a longer baseline, not a smaller α.** Holding a reference beacon N
+superframes back makes `per = (now - ref_us) / (counter - ref_counter)` and
+divides the timestamp noise by N. The hub's period is a constant; only this
+clock's rate drifts, and it drifts over minutes, so a long baseline costs two
+fields and buys the accuracy directly. A heavier filter lengthens the response to
+a real rate change as well, which a longer baseline does not.
+
+Waits on the hub's 1500 s sampler: pre-registered here before it landed, sd should
+scale with slot offset in the ratios **1 : 11.3 : 21.6** and the tail should beat
+the Gaussian, because under α = 0.5 one mis-heard beacon replaces half the
+estimate. If sd is flat across slots it is not this.
+
+`Core/Src/superframe.c`, `Core/Src/cli.c` → `hub_us_to_local`.
+`radio_devices_docs/wl55_device/radio/timebase.md`.
 
 ### 32. The RX filter is short of the budget and loses nothing — `debt`
 
