@@ -199,8 +199,77 @@ def delivery(d):
               f"{'ROSE' if r1 > r0 else 'FELL'}   Fisher two-sided p = {p:.2g}")
 
 
+def arm(path, label):
+    """One board's half of a between-board window."""
+    per, got, sent, ks = {}, 0, 0, [0, 0, 0]
+    for l in open(path):
+        m = PAT.match(l)
+        if m:
+            got += 1
+            sent += 1
+            ks[int(m[2])] += 1
+            per.setdefault(int(m[1]), []).append((int(m[6]), int(m[7])))
+        elif LOST.match(l):
+            sent += 1
+    sl = []
+    for sf in sorted(per):
+        v = per[sf]
+        if len(v) < 2:
+            continue
+        xs = [q[0] for q in v]
+        ys = [q[1] for q in v]
+        mx, my = statistics.mean(xs), statistics.mean(ys)
+        sl.append(sum((x-mx)*(y-my) for x, y in zip(xs, ys))
+                  / sum((x-mx)**2 for x in xs) * 1e6)
+    sd = statistics.stdev(sl) if len(sl) > 1 else float("nan")
+    print("  %-24s %3d/%3d = %5.1f%%   k %d/%d/%d   %2d cycles   sd %s ppm"
+          % (label, got, sent, 100.0*got/sent if sent else 0, ks[0], ks[1], ks[2],
+             len(sl), ("%.0f" % sd) if len(sl) > 1 else "-"))
+    return {"got": got, "sent": sent, "k": ks, "cycles": len(sl), "sd": sd}
+
+
+def between(control_path, treated_path):
+    """Treatment separated by board inside one window, graded as pre-registered.
+
+    The alternative - two windows on one board - was measured moving on its own:
+    an untouched board's k composition went 19/9/4 to 27/4/0 at p = 0.026."""
+    print("\n===== one window, treatment separated by board =====")
+    c = arm(control_path, "control  BASELINE 1")
+    x = arm(treated_path, "treated  BASELINE 64")
+    print("\n===== pre-registered grading =====")
+    low = min(c["cycles"], x["cycles"])
+    if low < 8:
+        print("F2  NOT POWERED: the smaller arm has %d cycles, the registration"
+              " required 8." % low)
+        print("    Report as not measured. Do not grade the sd on this window.")
+        return 1
+    rc = c["got"] / c["sent"] if c["sent"] else 0
+    rx = x["got"] / x["sent"] if x["sent"] else 0
+    hi, lo = max(rc, rx), min(rc, rx)
+    if lo > 0 and hi / lo > 3.0:
+        print("F3  the arms' accepted rates differ %.1fx (%.1f%% vs %.1f%%): the two"
+              % (hi/lo, 100*rc, 100*rx))
+        print("    populations are censored to different depths, so their scatters"
+              " are floors")
+        print("    of different heights. Report both, grade nothing.")
+        return 1
+    print("    sd(control) %.0f ppm   sd(treated) %.0f ppm" % (c["sd"], x["sd"]))
+    if c["sd"] > x["sd"]:
+        print("    PREDICTION HELD: the control scatters more, which is the"
+              " direction item 41 predicts.")
+    else:
+        print("F1  sd(control) <= sd(treated): the prediction is wrong in"
+              " direction.")
+    print("\n    Censoring runs one way, so both figures are floors and a held"
+          " prediction is")
+    print("    weaker evidence than a failed one.")
+    return 0
+
+
 if __name__ == "__main__":
     d = sys.argv[1]
+    if d == "--between":
+        sys.exit(between(sys.argv[2], sys.argv[3]))
     pre  = stats(*load([f"{d}/beforeA.txt", f"{d}/beforeB.txt"]), "BEFORE  (two-beacon period)")
     per_node_off([f"{d}/beforeA.txt", f"{d}/beforeB.txt"])
     per_node_fit([f"{d}/beforeA.txt", f"{d}/beforeB.txt"], "slope per board:")
