@@ -113,12 +113,8 @@ int main(void)
   MX_AES_Init();
   MX_PKA_Init();
   /* USER CODE BEGIN 2 */
-  COM_InitTypeDef com = {115200, COM_WORDLENGTH_8B, COM_STOPBITS_1,
-                         COM_PARITY_NONE, COM_HWCONTROL_NONE};
-  BSP_COM_Init(COM1, &com);
   timebase_start();
   load_reset();
-  CLI_Init();
   /* Park the radio in standby so its status byte is meaningful straight away. */
   radio_standby();
   /* USER CODE END 2 */
@@ -146,6 +142,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /* After the generated BSP_COM_Init above, which re-initialises the same UART. */
+  CLI_Init();
   extern volatile uint32_t loop_mark;
   extern volatile uint32_t loop_beat;
   while (1)
@@ -427,8 +425,9 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-    /* Reports the file and line of a failed assert. */
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* Nothing is wired up to receive this: the build does not define USE_FULL_ASSERT. */
+  (void)file;
+  (void)line;
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

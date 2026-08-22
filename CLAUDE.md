@@ -74,9 +74,11 @@ cmake --preset Debug
 cmake --build --preset Debug        # -> build/Debug/wl55_device.elf
 ```
 
-Presets: `Debug`, `Release`, `RelWithDebInfo`, `MinSizeRel`. Toolchain comes from
-STM32CubeCLT. Host tests: `make -C test check` — they cover the beacon rules, the
-exchange and the hop sequence, and they run in a second.
+Presets: `Debug` and `Release`, and those two only — the hub's tree carries four,
+and naming them here would name presets this repository does not define.
+Toolchain comes from STM32CubeCLT. Host tests: `make -C test check` — they cover
+the beacon rules, the exchange, the hop sequence, the link vectors, the period
+estimate, telemetry and uptime, and they run in a second.
 
 **Libraries are not vendored.** CubeMX references HAL and BSP from the Cube FW
 package and bakes absolute paths into `cmake/stm32cubemx/CMakeLists.txt`; the

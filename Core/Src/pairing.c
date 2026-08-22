@@ -10,7 +10,6 @@
 _Static_assert(sizeof(radio_pair_req_t) == 57u, "PAIR_REQ must stay 57 bytes");
 #include "radio.h"
 #include "sha256.h"
-#include "timebase.h"
 
 static const uint8_t info_session[] = "openhub/v1/session";
 static const uint8_t info_hop[]     = "openhub/v1/hop";
@@ -178,13 +177,6 @@ static int exchange(pairing_ctx_t *ctx, uint8_t send_type, uint8_t expect_type,
 
     derive_single_term_v1(ctx, shared_x);
     memset(shared_x, 0, sizeof(shared_x));
-    return 0;
-}
-
-/* Known before the request, so the response filter has something to compare.
- * radio_devices_docs/wl55_device/radio/pairing.md */
-int pairing_set_hub(pairing_ctx_t *ctx, uint32_t hub_id) {
-    ctx->hub_id = hub_id;
     return 0;
 }
 

@@ -3,7 +3,6 @@
 #include <string.h>
 
 #include "beacon.h"
-#include "timebase.h"
 #include "radio_phy.h"
 #include "radio_protocol.h"
 #include "radio_slots.h"

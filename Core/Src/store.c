@@ -322,13 +322,6 @@ int store_note_received(uint32_t counter) {
     return append(&r);
 }
 
-int store_init_ceiling(uint32_t *out) {
-    if (!cached_valid)
-        return -1;
-    *out = cached.init_ceiling;
-    return 0;
-}
-
 int store_save_init_ceiling(uint32_t superframe) {
     if (!cached_valid)
         return -1;

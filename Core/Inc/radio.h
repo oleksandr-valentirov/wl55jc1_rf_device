@@ -22,9 +22,6 @@ int radio_get_status(uint8_t *status);
 /** @brief Reads one radio register over SUBGHZSPI. */
 int radio_read_reg(uint16_t addr, uint8_t *value);
 
-/** @brief Writes one radio register over SUBGHZSPI. */
-int radio_write_reg(uint16_t addr, uint8_t value);
-
 /** @brief Puts the radio in standby, leaving the configuration in place. */
 int radio_standby(void);
 

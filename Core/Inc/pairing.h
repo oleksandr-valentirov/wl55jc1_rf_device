@@ -12,7 +12,6 @@
 #define PAIR_TYPE_RESPONSE  0x04u
 /* The shared header owns it: see frame.h. */
 #define PAIR_VERSION        RADIO_PROTO_VERSION
-#define PAIR_NONCE_LEN      ((uint32_t)sizeof(((radio_pair_req_t *)0)->dev_nonce))
 /* From radio_pair_req_t, never a local layout: 45 against 49 refused on length.
  * radio_devices_docs/wl55_device/radio/pairing.md */
 #define PAIR_FRAME_LEN      ((uint16_t)sizeof(radio_pair_req_t))
@@ -35,8 +34,6 @@ typedef struct {
 int pairing_keygen(pairing_ctx_t *ctx);
 /** @brief Draws a fresh dev_nonce; -1 and a zero nonce when the TRNG refuses. */
 int pairing_new_nonce(pairing_ctx_t *ctx);
-/** @brief Names the hub this exchange is with. */
-int pairing_set_hub(pairing_ctx_t *ctx, uint32_t hub_id);
 /** @brief Checks the salt is assembled as the contract publishes it. */
 int pairing_salt_check(const uint8_t *shared_x, uint32_t hub_id, uint32_t dev_id,
                        uint8_t *session_out, uint8_t *hop_out);

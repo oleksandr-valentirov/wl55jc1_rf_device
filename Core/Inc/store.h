@@ -58,10 +58,6 @@ int  store_note_received(uint32_t counter);
 /** @brief Reports the floor's key generation, leaving the comparison to the caller. */
 int  store_key_gen(uint32_t *gen);
 
-/** @brief The durable PAIR_INIT replay ceiling.
- *  radio_devices_docs/wl55_device/radio/pairing.md */
-int  store_init_ceiling(uint32_t *out);
-
 /** @brief Raises the ceiling; only ever called after a MAC has verified. */
 int  store_save_init_ceiling(uint32_t superframe);
 

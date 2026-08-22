@@ -2033,7 +2033,6 @@ static int cmd_load(int argc, char **argv) {
     return 0;
 }
 
-#include "pair_v2.h"   /* the published uplink frame, for the assembly check */
 #include "link_v5.h"   /* both data frames at 39 bytes, and the only downlink vector */
 
 /* A size assert answers "same shape", never "same contract": v4 built clean on v5.

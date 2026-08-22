@@ -5,6 +5,14 @@
 #include "sha256.h"
 #include "load.h"
 
+/* The streaming form is internal; hmac_sha256 is its only multi-part caller. */
+typedef struct {
+    uint32_t h[8];
+    uint64_t len;
+    uint8_t  buf[64];
+    uint32_t fill;
+} sha256_ctx_t;
+
 static const uint32_t K[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
     0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -56,7 +64,7 @@ static void compress(sha256_ctx_t *c, const uint8_t *block) {
     load_exit();
 }
 
-void sha256_init(sha256_ctx_t *c) {
+static void sha256_init(sha256_ctx_t *c) {
     c->h[0] = 0x6a09e667; c->h[1] = 0xbb67ae85;
     c->h[2] = 0x3c6ef372; c->h[3] = 0xa54ff53a;
     c->h[4] = 0x510e527f; c->h[5] = 0x9b05688c;
@@ -65,7 +73,7 @@ void sha256_init(sha256_ctx_t *c) {
     c->fill = 0;
 }
 
-void sha256_update(sha256_ctx_t *c, const uint8_t *data, uint32_t len) {
+static void sha256_update(sha256_ctx_t *c, const uint8_t *data, uint32_t len) {
     c->len += len;
     while (len > 0) {
         uint32_t take = 64u - c->fill;
@@ -82,7 +90,7 @@ void sha256_update(sha256_ctx_t *c, const uint8_t *data, uint32_t len) {
     }
 }
 
-void sha256_final(sha256_ctx_t *c, uint8_t *out) {
+static void sha256_final(sha256_ctx_t *c, uint8_t *out) {
     uint64_t bits = (uint64_t)c->len * 8u;
     uint8_t pad = 0x80;
     sha256_update(c, &pad, 1);

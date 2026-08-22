@@ -15,7 +15,6 @@
  * radio_devices_docs/wl55_device/radio/pairing.md */
 #define FRAME_VERSION       RADIO_PROTO_VERSION
 #define FRAME_DIR_UPLINK    RADIO_DIR_UPLINK
-#define FRAME_DIR_DOWNLINK  RADIO_DIR_DOWNLINK
 
 /* Little-endian: these are wire fields, and the nonce from them is big-endian.
  * radio_devices_docs/wl55_device/security/README.md */

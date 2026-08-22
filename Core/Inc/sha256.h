@@ -5,23 +5,7 @@
 #define SHA256_LEN 32
 #define HKDF_MAX_INFO 64
 
-typedef struct {
-    uint32_t h[8];
-    uint64_t len;
-    uint8_t  buf[64];
-    uint32_t fill;
-} sha256_ctx_t;
-
-/** @brief Starts a SHA-256 context; software, this part has no HASH block. */
-void sha256_init(sha256_ctx_t *c);
-
-/** @brief Absorbs a chunk into a SHA-256 context. */
-void sha256_update(sha256_ctx_t *c, const uint8_t *data, uint32_t len);
-
-/** @brief Finishes a SHA-256 context and writes the 32-byte digest. */
-void sha256_final(sha256_ctx_t *c, uint8_t *out);
-
-/** @brief One-shot SHA-256 over a buffer. */
+/** @brief One-shot SHA-256 over a buffer; software, this part has no HASH block. */
 void sha256(const uint8_t *data, uint32_t len, uint8_t *out);
 
 /** @brief HMAC-SHA-256. */

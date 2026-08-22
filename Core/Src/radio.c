@@ -2,7 +2,6 @@
  * radio_devices_docs/wl55_device/radio/driver.md */
 #include <string.h>
 
-#include "main.h"
 #include "radio.h"
 #include "radio_phy.h"
 #include "load.h"
@@ -50,7 +49,6 @@ extern RNG_HandleTypeDef hrng;
 #define IRQ_TIMEOUT             0x0200u
 
 #define REG_SYNCWORD_BASE       0x06C0u
-#define REG_WHITENING_MSB       0x06B8u
 
 #define RADIO_MAX_PAYLOAD       255u
 #define TX_BASE_ADDR            0x00u
@@ -105,7 +103,7 @@ int radio_read_reg(uint16_t addr, uint8_t *value) {
     return (HAL_SUBGHZ_ReadRegister(&hsubghz, addr, value) == HAL_OK) ? 0 : -1;
 }
 
-int radio_write_reg(uint16_t addr, uint8_t value) {
+static int radio_write_reg(uint16_t addr, uint8_t value) {
     return (HAL_SUBGHZ_WriteRegister(&hsubghz, addr, value) == HAL_OK) ? 0 : -1;
 }
 

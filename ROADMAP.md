@@ -1470,3 +1470,19 @@ on. If devices are specified below freezing this needs re-measuring, not
 assuming.
 
 `radio_devices_docs/radio/tdma.md` § lead time and guard band.
+
+### 54. `radio init` reports bench mode that a service silently takes back — `debt`
+
+`radio_configure(slot)` passes `want_bench = 0`, so every service-path retune —
+`report_service`, `recover_park`, the join rendezvous — clears `bench_mode` and
+rewrites the protocol sync word. On an armed board `radio init` prints
+`bench 869500000 Hz sync "benc"` and the next read of `0x06C0..0x06C3` returns
+`68 65 6C 6C`, the protocol word. Measured on node A 2026-08-22, four registers
+read one command after the retune.
+
+Nothing is wrong with reverting: an armed board belongs on the protocol air. What
+is missing is that the console said bench and nothing said it stopped, so a bench
+measurement taken while `report` is armed is on the protocol carrier and sync
+word under the bench's name.
+
+`radio_devices_docs/wl55_device/radio/driver.md`.

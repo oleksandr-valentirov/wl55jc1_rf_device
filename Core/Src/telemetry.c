@@ -1,7 +1,6 @@
 /* Records the device emits on its own, because a poll cannot see when.
  * radio_devices_docs/wl55_device/testing/telemetry.md */
 #include <stdio.h>
-#include <string.h>
 
 #include "telemetry.h"
 #include "timebase.h"

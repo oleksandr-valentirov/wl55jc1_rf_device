@@ -6,8 +6,7 @@
 #include "radio_phy.h"
 #include "crypto.h"
 
-/* The grid and the reserved join slot are contract, not local policy. */
-#define HOP_GRID_COUNT RADIO_GRID_COUNT
+/* The reserved join slot is contract, not local policy. */
 #define HOP_JOIN_SLOT  RADIO_JOIN_SLOT
 
 /* Computable, not tabulated, so an unexpected channel can be named at any superframe.
