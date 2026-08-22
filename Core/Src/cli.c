@@ -744,11 +744,11 @@ static int cmd_time(int argc, char **argv) {
         }
         out("camped on grid %u (%lu Hz), worst gap is %u superframes\r\n",
             (unsigned)grid, (unsigned long)radio_slot_hz(grid),
-            2u * HOP_VECTORS_COUNT - 1u);
+            2u * RADIO_HOP_COUNT - 1u);
         uint32_t t0 = micros();
         /* Two cycles: once per cycle bounds the count, not the gap, so the worst gap is 2N-1.
          * radio_devices_docs/wl55_device/testing/console.md */
-        info.timeout_us = (2u * (uint32_t)HOP_VECTORS_COUNT) * SUPERFRAME_US;
+        info.timeout_us = (2u * (uint32_t)RADIO_HOP_COUNT) * SUPERFRAME_US;
         if (radio_receive(rx, sizeof(rx), &info) != 0) {
             out("no data beacon in two full cycles - the hub is silent or this "
                 "is not its grid\r\n");
@@ -1879,7 +1879,7 @@ static const char *hop_live_key(void) {
 
 static int hop_init_live(void) {
     return hop_init(&hopper, join_res.paired ? join_res.hop_key : vec_hop_key,
-                    HOP_VECTORS_COUNT);
+                    RADIO_HOP_COUNT);
 }
 
 static int join_is_paired(void) { return join_res.paired != 0u; }
@@ -2736,7 +2736,7 @@ static void recover_park(void) {
         /* A fixed choice would put every lost device on one known channel. */
         if (radio_rng_word(&r) != 0)
             r = join_res.dev_id_be;
-        recover_park_grid = hop_to_grid((uint8_t)(r % HOP_VECTORS_COUNT));
+        recover_park_grid = hop_to_grid((uint8_t)(r % RADIO_HOP_COUNT));
         tlm_emit(TLM_REC_PARK, sframe.counter, recover_park_grid,
                  radio_slot_hz(recover_park_grid), 0u);
     }
@@ -2899,6 +2899,12 @@ void report_service(void) {
 
     /* The anchor is the hub's counter, not this node's guess at it. */
     sf = aligned;
+    /* The radio is tuned for report_attempt_sf; a different counter is a
+     * different channel. radio_devices_docs/radio/hopping.md */
+    if (sf != report_attempt_sf) {
+        tlm_emit(TLM_TX_DENY, sf, TLM_WHY_CHANNEL, grid, report_attempt_sf);
+        return;
+    }
     if ((sf % join_res.report_every) != 0u) {
         tlm_emit(TLM_TX_DENY, sf, TLM_WHY_OFFBEAT, 0u, 0u);
         return;

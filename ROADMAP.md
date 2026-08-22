@@ -315,7 +315,7 @@ Found 2026-08-22 while closing item 21. Nothing on the wire changes either way.
 `Core/Src/store.c` → `store_note_received`,
 `radio_devices_docs/wl55_device/security/replay.md`.
 
-### 43. The live hop is sized by a test vector's constant — `defect`
+### 43. The live hop was sized by a test vector's constant — `closed 2026-08-22`
 
 `hop_init_live()` passes **`HOP_VECTORS_COUNT`** as the channel count for the
 hopping the radio actually uses. That is the hop_v1 fixture's number. The
@@ -329,11 +329,25 @@ index into it. Not a degradation: a total loss of the link, from a constant that
 was never about the air.
 
 Same shape as the `hop` command answering with the test-vector key, one level
-over: a live path parameterised by a fixture. The fix is one identifier.
+over: a live path parameterised by a fixture.
+
+**Fixed 2026-08-22, and it was not one identifier — it was four sites, three of
+them live.** `hop_init_live` was the one this entry named; the other two live
+ones were the recovery scan's window (`2 * N - 1` superframes and its timeout)
+and **the park grid a lost device chooses**, `r % HOP_VECTORS_COUNT`. That last
+one is the path node A sat in all morning. Only the `hop vectors` self-test still
+takes the fixture's count, which is what a fixture is for.
+
+The class, not the instance: an entry that says "the fix is one identifier" is
+a claim nobody checked, and grepping the symbol took less time than writing this
+sentence. `test/test_hop.c` now carries **"hop_v1 still describes the live deck"**
+— `HOP_VECTORS_COUNT == RADIO_HOP_COUNT` — so a grid that changes size fails the
+suite instead of leaving a fixture quietly validating a cycle nothing transmits
+on. Verified non-vacuous by setting the fixture to 27 and watching it fail.
 
 `Core/Src/cli.c` → `hop_init_live`. `radio_devices_docs/radio/hopping.md`.
 
-### 42. The hop channel is computed from the guess and never recomputed — `defect`
+### 42. The hop channel was computed from the guess and never recomputed — `closed 2026-08-22`
 
 `report_service` tunes before it listens, because it has to:
 
@@ -359,9 +373,17 @@ a guard elsewhere is still the bug**, and this one is one edit to `hop.c` away
 from being live, in a file that has no reason to know it is load-bearing for
 `cli.c`.
 
-Recompute `grid` after `sf = aligned`, or refuse to transmit when the aligned
-counter differs from the one the tune was computed for — the second is cheaper
-and says what it means.
+**Fixed 2026-08-22** with the second option: after `sf = aligned`, a counter that
+differs from `report_attempt_sf` — the one the radio was tuned for — is refused
+with `TLM_TX_DENY ... TLM_WHY_CHANNEL`, carrying both counters so the telemetry
+says which way they diverged.
+
+**The refusal has never fired, so it cannot be read in either direction yet.**
+Its own entry's argument says why: the beacon guard makes it unreachable today.
+A zero here is not evidence the branch works — it is evidence the guard in front
+of it still holds. What would exercise it is a beacon accepted after a jump, and
+node A does exactly that on every cycle it cold-starts (item 29), so the first
+reading may come from A rather than from a deliberate test.
 
 Found 2026-08-22 while answering the hub's channel-disagreement question, which
 this side's data excludes as a cause.

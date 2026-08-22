@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "hop.h"
+#include "radio_phy.h"
 
 /* Both headers name their digest HOP_VECTORS_DIGEST; captured and undefined here.
  * radio_devices_docs/wl55_device/testing/host-tests.md */
@@ -62,6 +63,10 @@ int main(void) {
     eq("cycle 0 deck matches hop_v1", vec_hop_deck_cycle0, HV_DECK0, 28);
     eq("cycle 1 deck matches hop_v1", vec_hop_deck_cycle1, HV_DECK1, 28);
     check("hop_v1 pins the same channel count", HOP_VECTORS_COUNT == HOP_VEC_COUNT);
+    /* A fixture the live deck outgrew validates a cycle nothing transmits on.
+     * radio_devices_docs/radio/hopping.md */
+    check("hop_v1 still describes the live deck",
+          HOP_VECTORS_COUNT == RADIO_HOP_COUNT);
 
     /* The shuffle itself, over replayed AES. */
     check("hop_init", hop_init(&ctx, HV_HOP_KEY, HOP_VEC_COUNT) == 0);
