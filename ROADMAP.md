@@ -246,6 +246,21 @@ what it stops. The right change splits the two guards - beacon replay against th
 last *accepted beacon* counter, nonce safety against the durable mark - and that
 is a security-relevant redesign, not a 3 a.m. patch to flash and call verified.
 
+**Measured again 2026-08-22, both nodes, and this time the cost was priced.** A
+flash at 15:33:40 and 15:33:50 left both boards refusing every beacon. The hub was
+at superframe 693059; node A's durable mark was 693329 and node B's 693353, so the
+wait was **270 and 294 superframes - 9.0 and 9.8 minutes** before either could
+accept a beacon. Node A's console said it in one line: `sync: stale - a beacon
+would reuse a counter; re-pair (3 refused since the last good one; last was
+693041, -382 from here)`.
+
+Two things this instance adds. The cost is not the 33-minute worst case unless the
+reserve is fresh - here the block was partly spent, so it was a third of that; the
+figure to quote is `mark - hub counter`, which the console prints. And **every
+flash on this bench costs that silence**, which is why a before/after across a
+flash has a hole in it that is not the treatment: the hub was told to cut its
+series at 693329 / 693353 rather than at the flash timestamp.
+
 Item 5 (reboot-and-recover as one sequence) cannot pass while this stands.
 
 `radio_devices_docs/radio/crypto/wire-crypto.md`.
@@ -1009,7 +1024,7 @@ item 41, which moves the arrival scatter the hub is measuring.
 `radio_devices_docs/radio/tdma.md`.
 
 
-### 48. The firmware cannot say which build it is — `defect`
+### 48. The firmware cannot say which build it is — `closed 2026-08-22`
 
 `boot` carries `up`, `reset`, `kbps`; `status` prints uptime, clock and reset
 cause; nothing anywhere names the build. So "what is on this board" is not
@@ -1036,7 +1051,7 @@ The hub has the same hole and the same cause — its `hello` carries `fw` as a
 name, not a version — and tracks it as its own item 47. Two items, one shape;
 neither inherits the other's fix.
 
-**Fixed in source 2026-08-22, unflashed.** `cmake/build_id.cmake` runs at build
+**Closed on air 2026-08-22.** `cmake/build_id.cmake` runs at build
 time rather than at configure time, because a configure-time value goes stale on
 the next commit without anything saying so; it rewrites the header only on a
 change, so nothing rebuilds without cause. `status` prints `git describe
@@ -1044,6 +1059,11 @@ change, so nothing rebuilds without cause. `status` prints `git describe
 a dirty tree — the packed form the `sync` field already uses. Verified against a
 clean configure, and non-vacuous: the same generator pointed at the hub's tree
 returns that tree's id, so it reads git rather than emitting a constant.
+
+Confirmed from the boards rather than from the build: after the 15:33 flash both
+answer `build    4e04682 (record 81806978)`, which is HEAD, and the dirty bit is
+clear because the tree was committed before the build. The question "what is on
+this board" is now answered by the board.
 
 `cmake/build_id.cmake`, `CMakeLists.txt`, `Core/Src/telemetry.c`,
 `Core/Src/cli.c` → `cmd_status`.
