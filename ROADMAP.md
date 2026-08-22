@@ -948,6 +948,26 @@ Two runs of that residual were once held for pooling on a 273 ppm calibration
 difference. **Pooling two blind measurements licenses nothing** — the question
 was retired with the instrument, not answered.
 
+**A live instance with a magnitude, 2026-08-22.** Two nodes on the same hub, same
+grant, disagree about the superframe: node A measures `per=2010490`, node B
+`per=2003781`. Every slot is placed through
+`hub_us_to_local(x) = x * measured_us / SUPERFRAME_US`, so a scale differing by
+0.335 % multiplies the slot offset:
+
+    slot   0   offset   50000 us  ->    168 us
+    slot  65   offset  661000 us  ->   2217 us
+    slot 130   offset 1272000 us  ->   4266 us
+
+**`RADIO_SLOT_GUARD_US` is 1400 µs**, so A's later slots are outside the guard
+for a reason the guard was never sized against. And A's own `off` reads
+643/637/638, flat, because it is measured against the `slot_at` the same wrong
+scale produced — the blindness above, now costing milliseconds rather than
+bounding microseconds.
+
+The cause is not the grant: B was moved to A's cadence and its period estimate
+did not move. What is left is level, A being 30 dB down, which would make
+distance damage the clock and not only the SNR.
+
 `Core/Src/cli.c` → `report_service`, `Core/Src/radio.c:559`.
 
 
