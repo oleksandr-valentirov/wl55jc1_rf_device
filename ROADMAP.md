@@ -309,6 +309,41 @@ Found 2026-08-22 while closing item 21. Nothing on the wire changes either way.
 `Core/Src/store.c` → `store_note_received`,
 `radio_devices_docs/wl55_device/security/replay.md`.
 
+### 42. The hop channel is computed from the guess and never recomputed — `defect`
+
+`report_service` tunes before it listens, because it has to:
+
+    sf = superframe_now(&sframe) + 1;                     /* predicted */
+    hop_channel_live(sf, &hop); radio_configure(hop_to_grid(hop));
+    ...
+    sf = aligned;                                         /* the hub's counter */
+
+Between those two lines the counter can change and `grid` does not. So the
+channel belongs to this node's guess while the nonce, the slot timing and the
+telemetry label belong to the hub's truth.
+
+**Unreachable today, and that is the whole point of the entry.** A beacon that
+fails to arrive or fails `beacon_apply` returns before any transmit, so nothing
+goes out unless the guess was right — measured over 9 h 25 m: `rx.miss` 0,
+`rx.beacon` 8899, `tx.up` 26694 = 8898 × 3, and zero transmitting superframes
+without a beacon in the same one. The guard is real and it is doing the work.
+
+It becomes reachable the moment a beacon can arrive while the guess is wrong: a
+hop function whose period is shorter than the counter error, two superframes
+sharing a channel, or a beacon accepted after a jump. **A bug made unreachable by
+a guard elsewhere is still the bug**, and this one is one edit to `hop.c` away
+from being live, in a file that has no reason to know it is load-bearing for
+`cli.c`.
+
+Recompute `grid` after `sf = aligned`, or refuse to transmit when the aligned
+counter differs from the one the tune was computed for — the second is cheaper
+and says what it means.
+
+Found 2026-08-22 while answering the hub's channel-disagreement question, which
+this side's data excludes as a cause.
+
+`Core/Src/cli.c` → `report_service`. `radio_devices_docs/radio/hopping.md`.
+
 ### 34. Low power turns the link on; the AGC explanation is weak and this PA is not cleared — `blocking` `hub`
 
 Dropping this device from +14 to -17 dBm turned the link on. A-B-C on matched
