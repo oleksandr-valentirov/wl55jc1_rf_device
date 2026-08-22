@@ -800,6 +800,20 @@ adverse one. Whatever the treatment did, it is not board-independent, so nothing
 here separates it from the reboot, the re-arming, or the hop phase each board
 landed on.
 
+**And there was a second treatment in the flash, found from the hub's ring after
+the window closed: item 51.** The reset returned both boards to the compiled
+maximum transmit power, a step of +32 dB on A and +23 dB on B, timed to each
+board's own first post-flash transmission. The hub's frames say weak arrivals
+pass CRC half the time against 93 % for strong ones, so the power step alone
+moves delivery by about the amount being graded. **Neither board's delivery
+change is attributable to item 41**, and A's rise is not evidence for it any more
+than B's fall is evidence against.
+
+What survives the confound is the part that is about *when* a frame landed rather
+than whether it survived: the within-cycle slopes and their signs. Those stand.
+The next attempt needs the transmit level fixed and announced on both boards
+before the window opens, or the denominator moves with the treatment again.
+
 **And the statistic being graded was the wrong one, which is the run's real
 finding.** The hub recomputed the residual gradient *within* each superframe -
 three opportunities sharing one beacon, one anchor, one period estimate and one
@@ -1081,6 +1095,42 @@ conclusion: nothing here shows the level caused the loss.
 `Core/Src/cli.c` → `beacon_rssi_note`, `report_service`, `recover_take`.
 `radio_devices_docs/radio/tdma.md`.
 
+
+### 51. A reset puts both boards on maximum transmit power, silently — `defect`
+
+`tx_dbm` is `static int8_t tx_dbm = 14;` in `Core/Src/radio.c`, and
+`radio_set_power` has exactly one caller: the `radio power` console command.
+Nothing persists it and nothing restores it, so **every reset returns the board
+to the compiled maximum of +14 dBm** with no record that a level was ever chosen.
+
+**It confounded the item 41 experiment on 2026-08-22 and was found from the other
+side of the antenna.** The bench had been running at reduced power; the flash
+reset both boards to +14, and the hub's frame ring measured the step at each
+board's own first post-flash transmission rather than at a shared moment, which
+is what makes it firmware and not the room:
+
+    0xc4d444aa   -72 dBm before 15:48:25   ->  -42 / -40 after
+    0xdcbac6f5   -48 dBm before 15:52:06   ->  -25 after
+
+So the flash carried **two treatments** and the pre-registration accounted for
+one. The hub's own ring says weak frames (< -60 dBm) pass CRC 50 % of the time
+against 93 % for strong ones, so a +32 dB step alone moves delivery by roughly
+the amount item 41 was being graded on. Neither board's delivery change can be
+attributed.
+
+This is item 1's shape and item 36's - a value that exists only if an operator
+typed it - but it is the worst member of the family so far, because the default
+is the **maximum** and the direction of the surprise is upward. Duty cycle,
+item 25's governor and item 34's front-end overload are all reasoned about at a
+power nobody re-asserts after a reboot.
+
+The fix is not only persistence: an instrument has to say which value it used.
+`report` and `status` print neither the level nor whether it was chosen or
+defaulted, and `tx.arm` carries `dbm` - which is how the number was recoverable
+at all, and only from the hub's ring rather than from this board.
+
+`Core/Src/radio.c` → `radio_set_power`, `radio_power_dbm`, `Core/Src/cli.c`.
+`verification` skill § windows, brackets and the arming.
 
 ### 48. The firmware cannot say which build it is — `closed 2026-08-22`
 
