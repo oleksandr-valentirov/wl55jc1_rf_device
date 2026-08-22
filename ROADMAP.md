@@ -801,13 +801,19 @@ here separates it from the reboot, the re-arming, or the hop phase each board
 landed on.
 
 **And there was a second treatment in the flash, found from the hub's ring after
-the window closed: item 51.** The reset returned both boards to the compiled
+the window closed: item 52.** The reset returned both boards to the compiled
 maximum transmit power, a step of +32 dB on A and +23 dB on B, timed to each
-board's own first post-flash transmission. The hub's frames say weak arrivals
-pass CRC half the time against 93 % for strong ones, so the power step alone
-moves delivery by about the amount being graded. **Neither board's delivery
+board's own first post-flash transmission. Within node A alone the hub's ring has
+15/30 accepted at -72 dBm against 31/34 at -40, p = 0.0003, so the power step
+alone moves delivery by about the amount being graded. **Neither board's delivery
 change is attributable to item 41**, and A's rise is not evidence for it any more
 than B's fall is evidence against.
+
+The next transmit level is a decision about the level **at the hub's input**, not
+at this board's output: the two sit differently and the same +14 dBm arrives as
+-40 and -25. Equalising what is transmitted would leave the 23 dB that caused
+this, and dropping both to the -17 dBm floor would put node A back in the band
+where it loses half its frames.
 
 What survives the confound is the part that is about *when* a frame landed rather
 than whether it survived: the within-cycle slopes and their signs. Those stand.
@@ -1096,7 +1102,7 @@ conclusion: nothing here shows the level caused the loss.
 `radio_devices_docs/radio/tdma.md`.
 
 
-### 51. A reset puts both boards on maximum transmit power, silently — `defect`
+### 52. A reset puts both boards on maximum transmit power, silently — `defect`
 
 `tx_dbm` is `static int8_t tx_dbm = 14;` in `Core/Src/radio.c`, and
 `radio_set_power` has exactly one caller: the `radio power` console command.
@@ -1113,10 +1119,17 @@ is what makes it firmware and not the room:
     0xdcbac6f5   -48 dBm before 15:52:06   ->  -25 after
 
 So the flash carried **two treatments** and the pre-registration accounted for
-one. The hub's own ring says weak frames (< -60 dBm) pass CRC 50 % of the time
-against 93 % for strong ones, so a +32 dB step alone moves delivery by roughly
-the amount item 41 was being graded on. Neither board's delivery change can be
+one. Within node 0xc4d444aa alone - one board, so the level is not standing in
+for which board it is - the hub's ring has 15/30 accepted at -72 dBm against
+31/34 at -40, p = 0.0003. A +32 dB step therefore moves delivery by roughly the
+amount item 41 was being graded on, and neither board's delivery change can be
 attributed.
+
+The cross-board version of that comparison does **not** support it and was
+withdrawn by the hub: banding -45..-36 against -25 is banding A against B, so the
+level is identical to the board and the test says nothing about level. Within
+0xdcbac6f5 the step goes the other way and is not established - 33/50 at -48
+against 2/6 at -25, p = 0.18.
 
 This is item 1's shape and item 36's - a value that exists only if an operator
 typed it - but it is the worst member of the family so far, because the default
@@ -1128,6 +1141,20 @@ The fix is not only persistence: an instrument has to say which value it used.
 `report` and `status` print neither the level nor whether it was chosen or
 defaulted, and `tx.arm` carries `dbm` - which is how the number was recoverable
 at all, and only from the hub's ring rather than from this board.
+
+**It also ran a control nobody had been able to run, and the control passed.**
+The hub's item 12 required that a 31 dB change in transmit power move their
+printed level by about 31 dB, failing which their level column is not measuring
+the frame and no gain reading taken beside it may be quoted. The step delivered
+exactly that: +23 dB of power moved B's level +23, and +31 on A moved it +32. So
+the branch that had blocked their item 12 since August - "the column is stale" -
+is dead, and their `lna_gain = 1` at -25 dBm now reads as an AGC that does not
+back off rather than as an unreadable instrument.
+
+That is the whole value of this defect so far: **two hidden defaults exposed each
+other.** Theirs is `RegLna` sitting at its reset value, which is a configured
+state and not an unconfigured one; mine is `tx_dbm` sitting at its compiled
+maximum. Neither was visible from the side that owned it.
 
 `Core/Src/radio.c` → `radio_set_power`, `radio_power_dbm`, `Core/Src/cli.c`.
 `verification` skill § windows, brackets and the arming.
