@@ -2,7 +2,7 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g \
          -I../Core/Inc -I../../OpenHub/Common/inc \
          -I../../OpenHub/Common/test/vectors -I.
 
-TESTS = test_beacon test_exchange test_hop test_link test_telemetry test_uptime
+TESTS = test_beacon test_exchange test_hop test_link test_period test_telemetry test_uptime
 
 # A change to a vector header must rebuild the tests that check it. Without
 # this the binaries stayed up to date against their own sources while the
@@ -16,7 +16,7 @@ TESTS = test_beacon test_exchange test_hop test_link test_telemetry test_uptime
 # tracks one translation unit.
 VECTORS = $(wildcard ../../OpenHub/Common/test/vectors/*.h) \
           $(wildcard ../../OpenHub/Common/inc/*.h) \
-          $(wildcard ../Core/Inc/*_vectors.h)
+          $(wildcard ../Core/Inc/*.h)
 
 $(TESTS): $(VECTORS)
 
@@ -30,6 +30,9 @@ test_uptime: test_uptime.c host_timebase.c ../Core/Src/uptime.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_hop: test_hop.c ../Core/Src/hop.c
+	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
+
+test_period: test_period.c host_timebase.c ../Core/Src/superframe.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_link: test_link.c
