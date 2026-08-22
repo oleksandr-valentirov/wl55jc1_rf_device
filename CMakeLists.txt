@@ -56,7 +56,9 @@ if(NOT DEFINED OPENHUB_PATH)
 endif()
 set(WIRE_VECTORS "${OPENHUB_PATH}/Common/test/vectors")
 set(SHARED_PROTOCOL "${OPENHUB_PATH}/Common/inc")
-if(NOT EXISTS "${WIRE_VECTORS}/wire_v1.h")
+# Probed on a set this build includes; nothing here has read wire_v1 for months.
+# radio_devices_docs/wl55_device/testing/host-tests.md
+if(NOT EXISTS "${WIRE_VECTORS}/wire_v3.h")
     message(FATAL_ERROR
         "Wire vectors not found at ${WIRE_VECTORS}. Pass -DOPENHUB_PATH=<hub repo>.")
 endif()
