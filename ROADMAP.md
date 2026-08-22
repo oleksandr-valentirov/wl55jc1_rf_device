@@ -863,6 +863,16 @@ and the air** — and item 4's deadline is computed as though it were.
 Only visible because the device emits rather than answers: a poll lands in one of
 the two states and reads it as the steady one.
 
+**It is also a treatment, not only a latency term** — found on 2026-08-22 when
+node A and node B were put on the air together to compare distance. A holds the
+`every 8` grant and B holds `every 2`, so A cold-starts on every cycle and
+searches with `win=71934` where B tracks with `win=47806`, and A's period
+estimate comes out at 2010388 us against B's 2004216 us — 0.3 % apart on the same
+hub, because a sparse and churning baseline is a worse baseline. Both effects
+push a far device's delivery down for reasons that are not distance, which is the
+comparison the experiment exists to make. **Two devices being compared must hold
+the same grant**, and the grant is the hub's to set.
+
 `Core/Inc/superframe.h` → `SUPERFRAME_FRESH_US`, `Core/Src/cli.c` →
 `report_service`, `radio_devices_docs/wl55_device/testing/telemetry.md`.
 
@@ -1044,10 +1054,18 @@ downlink that exists.
 
 ## Bench debts
 
-### 18. Every air number here comes from one node
+### 18. Every air number here came from one node — `closed 2026-08-22`
 
-Node B has done all the transmitting, so nothing on this bench distinguishes a
+Node B had done all the transmitting, so nothing on this bench distinguished a
 property of the protocol from a property of one board.
+
+**Node A transmitted for the first time on 2026-08-22**, on slot 0, in the same
+superframes as node B — TDMA separates them, so one window measures both. The
+first thing two nodes bought was a cross-check no single node could give: the
+hub hears A at -72 dBm and B at -43, and the devices hear the hub at -46 and -15.
+**Two receivers at opposite ends of the link agree on the 30 dB split to within
+2 dB**, neither calibrated against the other. What was left of this entry is the
+grant asymmetry, which is item 29's.
 
 **Node A is not the blank board this entry assumed.** `join show` on it reads
 `dev C4D444AA, paired: slot 0, report every 8, key gen 2` — restored from its
