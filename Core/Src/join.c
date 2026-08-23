@@ -358,9 +358,14 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
 
     uint8_t conf[sizeof(radio_pair_conf_t)];
     build_confirm(p, keys.confirm_dev, conf);
+    /* Two superframes after the invitation, not 105 ms after the response.
+     * radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md */
+    while ((int32_t)(micros() - (t_beacon + RADIO_PAIR_CONF_REGION * SUPERFRAME_US)) < 0)
+        ;
     if (radio_send(conf, sizeof(conf), NULL) != 0)
         return -24;
     stats.conf_sent++;
+    stats.invite_to_conf_us = micros() - t_beacon;
 
     uint32_t t_conf = micros();
     stats.rsp_to_conf_us = t_conf - t_rsp;

@@ -241,6 +241,9 @@ static void show_join(void) {
         "  response -> confirm %lu us\r\n",
         (unsigned long)j.beacon_to_req_us, (unsigned long)j.req_to_rsp_us,
         (unsigned long)j.rsp_to_conf_us);
+    out("held    invite -> confirm %lu us  (schedule %lu us)\r\n",
+        (unsigned long)j.invite_to_conf_us,
+        (unsigned long)(RADIO_PAIR_CONF_REGION * SUPERFRAME_US));
     out("rsp      heard %lu  timeout %lu  crc %lu  skipped %lu (last type %02x)  len %u\r\n",
         (unsigned long)j.rsp_heard, (unsigned long)j.rsp_timeout,
         (unsigned long)j.rsp_crc_err, (unsigned long)j.rsp_skipped,

@@ -32,6 +32,7 @@ typedef struct {
     uint32_t beacon_to_req_us;   /**< measured: the hub retunes ~100 ms after its beacon */
     uint32_t req_to_rsp_us;      /**< the hub's whole turnaround, request end to response end */
     uint32_t rsp_to_conf_us;     /**< this device's own: two X25519, then the confirmation */
+    uint32_t invite_to_conf_us;  /**< the whole hold, which the region schedule fixes */
     uint32_t beacon_closed;      /* heard, but the operator's window is not open */
     uint32_t req_sent;
     uint32_t rsp_timeout;        /* nothing at all arrived */
