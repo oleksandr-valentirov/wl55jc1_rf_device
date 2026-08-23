@@ -139,6 +139,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/hublogic.c
     Core/Src/load.c
     Core/Src/pair_init.c
+    Core/Src/sensor.c
     third_party/monocypher/monocypher.c
     # The RF switch is BSP territory: the .ioc pulls in the nucleo half only.
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c

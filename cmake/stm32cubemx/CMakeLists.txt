@@ -33,8 +33,9 @@ set(MX_Application_Src
 # STM32 HAL/LL Drivers
 set(STM32_Drivers_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/system_stm32wlxx.c
-    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_cryp.c
-    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_cryp_ex.c
+    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_adc.c
+    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_adc_ex.c
+    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_ll_adc.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_rcc.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_rcc_ex.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_flash.c
@@ -47,6 +48,8 @@ set(STM32_Drivers_Src
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_cortex.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_exti.c
+    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_cryp.c
+    /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_cryp_ex.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_pka.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_rng.c
     /home/aleks/STM32Cube/Repository/STM32Cube_FW_WL_V1.6.0/Drivers/STM32WLxx_HAL_Driver/Src/stm32wlxx_hal_rng_ex.c

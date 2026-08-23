@@ -183,14 +183,20 @@ So the 33-minute post-reset silence is removed **by design**, and the durable ma
 no longer answers *what time is it*. `counter_mark` survives in the record layout
 as a retired field and in the torn-write fixture, and nothing else reads it.
 
-**What is owed is the hardware evidence, and there is none.** ADR-0023 is marked
-*implemented device-side, unverified on hardware*, and the one host test that
-pins it — `test_mark_ahead_does_not_block_sync` — proves the align path ignores
-the mark and says nothing about a real reboot on a live grid. The check is item
-5's sequence: pair, reset, and transmit again inside the first cycle that carries
-a downlink.
+**Exercised 2026-08-24, and it failed.** `downlink_open()` raised the floor on
+every downlink rather than latching the first, and the downlink region is in the
+same cycle as the report — so the floor was always the superframe about to be
+used and every report was refused `why=8`. Hub `uplink windows 589, sync 0`
+against a node that believed it was reporting. Fixed by latching once, and both
+sides then agree: node `tx.up sf=21832 slot=2`, hub `sync 2, 2/0`, and an SDR
+reading `UPLINK v6 slot=2` off the air at 68.6 ms against a grid offset of 68.8.
 
-`Core/Src/device.c` -> `tx_allowed`, `time_start`.
+**What is still owed is the reset half.** The evidence above is a device that
+booted, paired earlier, and transmitted — not one that transmitted, reset, and
+transmitted again above its own previous nonces. That is item 5's sequence and it
+is what the floor exists for.
+
+`Core/Src/device.c` -> `tx_allowed`, `time_start`, `downlink_open`.
 `radio_devices_docs/radio/decisions/0023-the-hub-supplies-the-transmit-floor.md`.
 
 ### 40. A reset reopens up to a thousand superframes of replay window — `defect`
@@ -805,6 +811,20 @@ on. If devices are specified below freezing this needs re-measuring, not
 assuming.
 
 `radio_devices_docs/radio/tdma.md` § lead time and guard band.
+
+### 74. The convention checker reads a dereference as a comment — `debt`
+
+`check_conventions.py` treats any line whose first character is `*` as a comment
+continuation, so a wrapped expression beginning `*out = ...` is measured as part
+of the block above it and reported as an over-length comment at a line holding no
+comment at all. It cost one function a rewrite on 2026-08-24 to satisfy a rule it
+was never breaking.
+
+The predicate wants to be `* ` or `*/` rather than `*`. **Both trees carry a copy
+and `tools/test_check_docs.py` asserts they agree**, so this is two edits and a
+shoulder in `tools/test_check_conventions.py`, not one edit.
+
+`tools/check_conventions.py`.
 
 ### 54. `radio init` reports bench mode that a service silently takes back — `debt`
 

@@ -28,6 +28,7 @@
 #include "beacon.h"
 #include "wire_v4.h"
 #include "telemetry.h"
+#include "sensor.h"
 
 extern UART_HandleTypeDef hcom_uart[];
 
@@ -159,7 +160,7 @@ static int hop_channel_live(uint32_t sf, uint8_t *ch) {
 /* Idle is what is left over, so it is a lower bound on load and not an upper one.
  * radio_devices_docs/wl55_device/testing/console.md */
 
-#include "link_v5.h"   /* both data frames at 39 bytes, and the only downlink vector */
+#include "link_v6.h"   /* both data frames at 39 bytes, and the only downlink vector */
 
 /* A size assert answers "same shape", never "same contract": v4 built clean on v5.
  * radio_devices_docs/wl55_device/testing/host-tests.md */
@@ -577,6 +578,7 @@ void report_service(void) {
     uint8_t rx[32], f[sizeof(radio_uplink_t)], hop, grid;
     radio_rx_info_t info = {0};
     radio_uplink_report_t rep;
+    sensor_reading_t meas;
     uint32_t aligned = 0;
 
     if (!join_is_paired() || sframe.measured_us == 0u)
@@ -667,11 +669,16 @@ void report_service(void) {
 
     memset(&rep, 0, sizeof(rep));
     rep.rssi_down = beacon_rssi_valid ? beacon_rssi_dbm : 0;
-    /* Unconditional while no ADC exists: the wire never claims an unmade reading. */
-    rep.flags     = RADIO_REPORT_FLAG_SUPPLY_STALE;
     if (!beacon_rssi_valid)
         rep.flags |= RADIO_REPORT_FLAG_RSSI_STALE;
-    rep.supply_mv = 0;
+    /* One conversion pair answers for both, so one refusal marks both stale.
+     * radio_devices_docs/wl55_device/arch/sensors.md */
+    if (sensor_read(&meas) == 0) {
+        rep.supply_mv  = meas.supply_mv;
+        rep.temp_c_x10 = meas.temp_c_x10;
+    } else {
+        rep.flags |= RADIO_REPORT_FLAG_SUPPLY_STALE | RADIO_REPORT_FLAG_TEMP_STALE;
+    }
     rep.uptime_s  = timebase_uptime_s();
     rep.ack_seq   = dl_ack_seq;
     rep.ack_cmd   = dl_ack_cmd;
@@ -741,6 +748,7 @@ void report_service(void) {
         int32_t  off = (int32_t)(micros() - air - slot_at) + (int32_t)ramp;
 
         tlm_emit(TLM_TX_UP, sf, slot_n, (uint32_t)off, grid);
+        reports_sent++;
         /* Spent on the frame that carried it, not on the one that was built. */
         tx_self_silenced = 0;
     }

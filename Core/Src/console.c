@@ -12,6 +12,7 @@
 #include "crypto.h"
 #include "join.h"
 #include "device.h"
+#include "sensor.h"
 #include "hublogic.h"
 #include "load.h"
 #include "main.h"
@@ -84,6 +85,21 @@ static void show_state(void) {
         (unsigned long)v.reports_sent, (unsigned long)v.beacons_missed,
         (unsigned long)v.downlinks_applied, (unsigned long)v.downlinks_opened,
         (unsigned long)v.recover_entered);
+    {
+        /* The same numbers the report carries, before the air can be blamed. */
+        sensor_reading_t m;
+        uint32_t taken, failed;
+
+        sensor_counts(&taken, &failed);
+        if (sensor_read(&m) == 0)
+            out("sensor  %d.%01u C  %u mV  (%lu taken, %lu failed)\r\n",
+                m.temp_c_x10 / 10, (unsigned)(m.temp_c_x10 < 0 ? -m.temp_c_x10
+                                              : m.temp_c_x10) % 10u,
+                m.supply_mv, (unsigned long)taken, (unsigned long)failed);
+        else
+            out("sensor  nothing measured yet (%lu taken, %lu failed)\r\n",
+                (unsigned long)taken, (unsigned long)failed);
+    }
     /* Only `seen` is a denominator.
      * radio_devices_docs/wl55_device/radio/pairing.md */
     out("invites seen %lu  refused %lu  (listening slices %lu)\r\n",
