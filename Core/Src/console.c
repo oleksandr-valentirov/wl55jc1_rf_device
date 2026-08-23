@@ -79,9 +79,11 @@ static void show_state(void) {
             (unsigned long)v.tx_floor);
     else
         out("tx floor  none yet - no downlink opened since boot\r\n");
-    out("counts  reports %lu  missed %lu  downlinks %lu  recoveries %lu\r\n",
+    /* Opened is the denominator; applied counts only the ones that named a command. */
+    out("counts  reports %lu  missed %lu  downlinks %lu of %lu  recoveries %lu\r\n",
         (unsigned long)v.reports_sent, (unsigned long)v.beacons_missed,
-        (unsigned long)v.downlinks_applied, (unsigned long)v.recover_entered);
+        (unsigned long)v.downlinks_applied, (unsigned long)v.downlinks_opened,
+        (unsigned long)v.recover_entered);
     /* Only `seen` is a denominator.
      * radio_devices_docs/wl55_device/radio/pairing.md */
     out("invites seen %lu  refused %lu  (listening slices %lu)\r\n",

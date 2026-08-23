@@ -44,7 +44,7 @@ typedef struct device_view {
     uint32_t recover_entered;
     int8_t   rssi_down_dbm;     /**< the hub's last beacon as this node heard it */
     uint8_t  rssi_valid;
-    uint32_t tx_floor;          /**< superframe of the newest downlink opened this boot */
+    uint32_t tx_floor;          /**< superframe of the first downlink opened this boot */
     uint8_t  tx_floor_known;    /**< nothing may be sealed until one has */
     uint32_t invite_slices;     /**< times the node looked, never a denominator */
     uint32_t invites_seen;      /**< frames that parsed as a PAIR_INIT at all */
@@ -52,6 +52,7 @@ typedef struct device_view {
     uint32_t reports_sent;
     uint32_t beacons_missed;
     uint32_t downlinks_applied;
+    uint32_t downlinks_opened;  /**< every one that passed its tag, keepalives included */
 } device_view_t;
 
 /* Bounded by a physical act, and a release is one.

@@ -172,7 +172,7 @@ static uint32_t hub_us_to_local(uint32_t hub_us);
 
 /* What the next report echoes. The wire cannot tell its zero from cmd 0 seq 0. */
 static uint8_t  dl_ack_seq, dl_ack_cmd, dl_ack_arg, dl_any;
-static uint32_t dl_applied, dl_repeats, dl_replays;
+static uint32_t dl_applied, dl_repeats, dl_replays, dl_opened;
 
 /* A silence this device imposed on itself. A reboot is not one: uptime_s says that.
  * radio_devices_docs/radio/tdma.md */
@@ -318,9 +318,13 @@ static int downlink_open(const uint8_t *f, uint8_t len, radio_downlink_cmd_t *cm
     }
     dl_floor = sf;
     dl_floor_known = 1;
-    /* This boot only: a floor restored from flash is the previous run's. */
-    tx_floor = sf;
-    tx_floor_known = 1;
+    dl_opened++;
+    /* Latched at the first: a later one re-raises a floor already cleared.
+     * radio_devices_docs/radio/decisions/0023-the-hub-supplies-the-transmit-floor.md */
+    if (!tx_floor_known) {
+        tx_floor = sf;
+        tx_floor_known = 1;
+    }
     memcpy(last_dl, f, sizeof(last_dl));
     have_last_dl = 1;
     return 0;
@@ -946,6 +950,7 @@ void device_snapshot(device_view_t *v) {
     v->reports_sent    = reports_sent;
     v->beacons_missed  = beacons_missed;
     v->downlinks_applied = dl_applied;
+    v->downlinks_opened  = dl_opened;
 }
 
 void device_init(void) {
