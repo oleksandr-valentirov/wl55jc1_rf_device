@@ -1503,6 +1503,39 @@ correctly.
 
 `radio_devices_docs/wl55_device/testing/bench-harness.md`.
 
+### 61. The WL55 hub role never got ADR-0026, and the control fixture is dead — `blocking` `hub`
+
+Eleven exchanges on 2026-08-23, node B built `-DWL55_ROLE=HUB`, node A on
+`632b261`:
+
+```
+tx      invites 11 (err 0)  beacons 33
+rx      sync 11  crc err 0  frames 11
+req     seen 11  rsp sent 11
+conf    seen 0
+accept  sent 0  paired 0  timeouts 11
+```
+
+**Eleven of eleven, deterministic.** `sync == frames` exactly, so the hub heard the
+eleven requests and never a sync word for a confirmation.
+
+This is the hazard the aggregate roadmap's phase 8 named and mis-scoped: *with step
+4 alone the device holds a confirmation the hub is no longer waiting for.* Step 3
+landed on the **H755's CM4** and step 4 here, and **the WL55 hub role is a third
+image nobody counted.** `hublogic.c` still arms `HUB_EX_TIMEOUT_US = 2 *
+SUPERFRAME_US` from the response and knows nothing of `RADIO_PAIR_CONF_REGION`.
+
+**The cost reaches past this bench.** The WL55-to-WL55 control produced the **4 of
+4** baseline the pairing page quotes against the H755's 5 of 10, and that fixture
+cannot now complete a pairing at all. Every comparison against that baseline is
+suspended until this is built.
+
+It also removes the only route to pairing a node while the hub's cache is full,
+which is what blocked items 58 and 60 from being verified on hardware.
+
+`radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md`,
+`bench/runs/2026-08-23-3/RESULTS.md`.
+
 ### 58. A device with no console still cannot be released — `blocking`
 
 **Narrowed 2026-08-23.** The half that needed a debug probe is built:
@@ -1525,9 +1558,13 @@ released only at a bench — and the second cannot cover the case this item exis
 for, which is a hub that is *gone*. Nothing should be built here until that is
 chosen.
 
-**Not verified on hardware.** It builds, both console arms link, host tests pass;
-no board has released and re-paired yet. The control is: release, read `ident`,
-confirm the id did not move, then pair to a hub and check the id the hub sees.
+**Not verified on hardware, and both routes to a paired node are down.** The H755
+cannot enrol node A's id (hub item 66) and the WL55 hub role cannot complete an
+exchange (item 61), so `release` has never had a pairing to release. What did run:
+both console arms link and flash, and the console-off build's record stream is
+unchanged — `!1 ident dev=583920721 gen=0 held=1 why=0`, the same identity, off
+flash. The control still owed is: release, read `ident`, confirm the id did not
+move, then pair and check the id the hub sees.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
 
@@ -1548,9 +1585,25 @@ Renamed to `invite_slices`, which is what it counts, and the console now prints
 sees a frame. The slice count is still shown, in brackets, because it is the right
 denominator for a different question: how often the node was listening.
 
+**Measured on node A 2026-08-23, both arms** (`bench/runs/2026-08-23-3`, TR-A-1):
+
+| arm | `invites seen` | listening slices |
+|---|---|---|
+| a hub inviting | 0 → **3** | — |
+| nothing inviting | **3, frozen** | 10 → **17** |
+
+Seven slices with the counter not moving. Under the previous firmware these were
+one number, and that is how `68 heard / 4 req sent` came to be read as a rate.
+
+The second instrument for the frozen arm is the hub's own `device pair`, on the
+other side of the antenna, reading `pairing idle, window 0 ms left` — direct
+evidence that nothing was sent rather than nothing heard. Had both arms read zero
+that substitution would not have been adequate, and the SDR would have been
+required; it is recorded in the run as a deviation from the pre-registration.
+
 `radio_devices_docs/wl55_device/radio/pairing.md`.
 
-### 60. An unpaired device silently refuses a hub it has not paired with — `closed 2026-08-23`
+### 60. An unpaired device silently refuses a hub it has not paired with — `closed in code 2026-08-23`
 
 `pair_init_verify` skips the network comparison only while the stored `hub_id` is
 zero. A node that reached a PAIR_RSP and got no further keeps that hub's id in
@@ -1572,6 +1625,10 @@ and which one it is holding out for, rather than a bare `rc`.
 
 Item 58's release clears the binding as well, which is what that item asked for.
 
-**Not verified on hardware**: the nineteen-of-nineteen control has not been re-run.
+**Not verified on hardware, and the fixture that would do it is down** — see item
+61. What was observed on 2026-08-23 is one half: node A took four invitations from
+a WL55 hub it had never paired with and **verified all four** (`invites seen 7,
+refused 3`, the three refusals predating the hub), so it carries no stale binding.
+The nineteen-of-nineteen control itself needs a completed pairing and could not run.
 
-`radio_devices_docs/radio/pairing.md`.
+`radio_devices_docs/radio/pairing.md`, `bench/runs/2026-08-23-3/RESULTS.md`.
