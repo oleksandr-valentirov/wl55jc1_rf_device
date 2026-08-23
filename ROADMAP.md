@@ -170,65 +170,6 @@ moment (`verification` skill).
 
 ## Defects
 
-### 55. A device with no hub static key can never obtain one — `blocking` `defect`
-
-**Fixed and verified on air 2026-08-23, pending a flash to node B.** `PAIR_INIT`
-carries `hub_static` under ADR-0024 and `join.c` calls `store_save_hub_static()`
-from the pairing path. Verified end to end on node A with **only `device add
-<id>` typed on the hub**: a node whose store had been erased took the hub's key
-out of the invitation, answered, confirmed and paired. `test_no_hub_key_still_listens`
-in `test/test_invite.c` fails if the refusal returns. The hot loop is gone with
-it — `invite_service()` now paces on `INVITE_SLICE_MS` rather than re-entering a
-free refusal.
-
-`store_save_hub_static()` has **no caller**. The only one was the console command
-deleted by the autonomy refactor (`cli.c:1723` at 6e94b41, `hub static key set
-and persisted`), and nothing replaced it.
-
-`join_run_ex()` refuses at its first line when the store holds no hub static key
-and returns -20 **before it listens for anything**, so the device cannot learn the
-key from the join beacon that would carry it. A mass-erased device is therefore
-unpairable by any route that exists in the firmware.
-
-Found by regression run 2026-08-23-1 (RG-A-1, REQ-F-1, REQ-F-3, REQ-F-12) after
-both bench nodes were formatted: 60 s of capture carried 30 hub beacons and 15
-downlinks and **zero uplinks**, while both nodes emitted `join.try rc=20` and
-nothing else. The two boards had held provisioned keys since before the
-refactor, which is why nothing caught it.
-
-**The refusal is also a hot loop.** The -20 path costs nothing, so
-`invite_service()` re-enters it every superloop pass: measured **~139
-`join.try` records per second**, about one per 7 ms, where `INVITE_SLICE_MS` was
-meant to pace it. A device that cannot pair should idle, not spin.
-
-`radio_devices_docs/wl55_device/radio/pairing.md`.
-
-### 56. An identity restored from flash has no public key — `blocking` `defect`
-
-**Fixed, pending a flash to node B.** `provision_identity()` calls
-`crypto_x25519_public_from_private()` on the restore path.
-
-`provision_identity()` copies the private key out of the store, sets
-`have_key = 1` and **never derives the public point**. `pair_ctx.pub` is written
-in exactly one place, the fresh-draw path, so on every boot that restores an
-identity it stays zeroed.
-
-The firmware this replaced did it correctly: `pair_load_identity()` called
-`crypto_p256_public_from_private()` on the restore path (`cli.c:1196` at
-6e94b41). The autonomy refactor dropped that line.
-
-Observed on node A in regression run 2026-08-23-1 (RG-T-1, REQ-F-7): first boot
-after erase drew `7C9B7DAF` with pubkey `02644DA3..`, and after a reset the same
-id came back with pubkey `020000000000..` — 32 zero bytes.
-
-Two consequences, and the second is worse than the first: `ident` invites the
-operator to enrol a zero key, and the pairing exchange would put that zero point
-on the wire, so **a device that has ever rebooted cannot pair even once item 55
-is fixed**.
-
-`radio_devices_docs/wl55_device/arch/store.md`.
-
-
 ### 6. Neither uplink path gates on the reserved counter window — `defect`
 
 **Fixed, pending a flash to node B.** The window now lives in `reserve_ceiling`

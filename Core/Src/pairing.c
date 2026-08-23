@@ -1,4 +1,4 @@
-/* One P-256 ECDH over the air, then HKDF. Cleartext; the fingerprint is what binds it.
+/* Two X25519 over the air, then HKDF. Cleartext; the fingerprint is what binds it.
  * radio_devices_docs/wl55_device/radio/pairing.md */
 #include <stddef.h>
 #include <string.h>
@@ -59,12 +59,13 @@ uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx, uint8_t out[X25519_PUB_LEN],
 
 uint8_t pairing_fingerprint(const pairing_ctx_t *ctx, uint8_t out[SHA256_LEN],
                             uint32_t out_len) {
-    const uint8_t *compressed = ctx->pub;
     /* Bounded twice: the array parameter catches a short array, out_len a bare pointer.
      * radio_devices_docs/wl55_device/radio/pairing.md */
     if (!ctx->have_key || out_len < SHA256_LEN)
         return 0;
-    sha256(compressed, sizeof(compressed), out);
+    /* The member's width, never a local pointer's: sizeof on one hashed four bytes.
+     * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
+    sha256(ctx->pub, sizeof(ctx->pub), out);
     return SHA256_LEN;
 }
 
