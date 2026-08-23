@@ -23,19 +23,19 @@ typedef struct {
     uint32_t magic;
     uint32_t seq;
     uint32_t dev_id;
-    uint32_t counter_mark;
+    uint32_t counter_mark;   /* retired with the reservation; ADR-0023 */
     uint8_t  priv[STORE_PRIV_LEN];
     uint32_t key_gen;       /**< which generation rx_floor belongs to, so a stale one shows */
     uint32_t rx_floor;      /* replay window survives a reset only if stored */
     uint8_t  session[STORE_KEY_LEN];        /**< the grant; the four below have no writer yet */
     uint8_t  hop_key[STORE_KEY_LEN];        /* network-wide, from PAIR_ACCEPT */
-    uint8_t  hub_static[STORE_PUB_C_LEN];   /* provisioned; Z1 needs it */
+    uint8_t  hub_static[STORE_PUB_C_LEN];   /* learned at pairing - ADR-0024 */
     uint8_t  slot;                          /* granted uplink slot */
     uint8_t  report_every;
     uint32_t init_ceiling;  /**< durable, because a rate limit resets on reboot */
     uint32_t hub_id;        /**< carved out of the pad, so 0 still means absent */
     uint16_t net_id;
-    uint8_t  pad[119];      /* fills the slot exactly; covered by the CRC */
+    uint8_t  pad[120];      /* fills the slot exactly; covered by the CRC */
     uint32_t crc;
 } __attribute__((packed)) store_record_t;
 
@@ -251,6 +251,13 @@ int store_save_report_every(uint8_t report_every) {
     return append(&r);
 }
 
+int store_hub_static_set(const store_state_t *st) {
+    for (uint32_t i = 0; i < STORE_PUB_C_LEN; i++)
+        if (st->hub_static[i] != 0u)
+            return 1;
+    return 0;
+}
+
 int store_save_hub_static(const uint8_t *pub_c) {
     store_record_t r;
     if (!cached_valid)
@@ -286,27 +293,6 @@ int store_save_identity(const uint8_t *priv, uint32_t dev_id) {
     return append(&r);
 }
 
-int store_reserve_counter(uint32_t counter_now, uint32_t *first_safe,
-                          uint32_t *mark_out) {
-    store_record_t r;
-
-    if (!cached_valid)
-        return -1;
-    r = cached;
-    *first_safe = cached.counter_mark;
-
-    /* Past where the counter is, not one step past where it was: the clock jumps.
-     * radio_devices_docs/wl55_device/arch/store.md */
-    uint32_t base = cached.counter_mark;
-    if ((int32_t)(counter_now - base) >= 0)
-        base = counter_now + 1u;
-    r.counter_mark = base + STORE_COUNTER_STEP;
-
-    if (append(&r) != 0)
-        return -1;
-    *mark_out = r.counter_mark;
-    return 0;
-}
 
 /* Amortised with the send mark: without it a reset reopens the replay window.
  * radio_devices_docs/wl55_device/arch/store.md */

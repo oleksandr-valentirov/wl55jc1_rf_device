@@ -1,0 +1,282 @@
+/* Read-only: every command answers a question and none changes what runs.
+ * radio_devices_docs/wl55_device/testing/console.md */
+#include "console.h"
+
+#if WL55_CONSOLE
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "build_id.h"
+#include "crypto.h"
+#include "join.h"
+#include "device.h"
+#include "load.h"
+#include "main.h"
+#include "pairing.h"
+#include "radio.h"
+#include "radio_phy.h"
+#include "radio_slots.h"
+#include "telemetry.h"
+#include "timebase.h"
+#include "vcp.h"
+#include "vectors.h"
+
+#define CON_CMD_LEN   32
+#define CON_RESP_LEN  768
+#define CON_RX_LEN    64
+
+static char     resp[CON_RESP_LEN];
+static int      resp_len;
+static char     cmd[CON_CMD_LEN];
+static uint8_t  cmd_len;
+static volatile uint8_t rx_buf[CON_RX_LEN];
+static volatile uint8_t rx_head, rx_tail;
+
+static void out(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(resp + resp_len, (size_t)(CON_RESP_LEN - resp_len), fmt, ap);
+    va_end(ap);
+    if (n > 0)
+        resp_len += (n < CON_RESP_LEN - resp_len) ? n : (CON_RESP_LEN - resp_len);
+}
+
+static void flush(void) {
+    vcp_write((const uint8_t *)resp, (uint16_t)resp_len, 500);
+    resp_len = 0;
+}
+
+static void show_state(void) {
+    device_view_t v;
+    device_snapshot(&v);
+
+    out("build   %s\r\n", BUILD_ID_STR);
+    out("uptime  %lu s   reset %08lX\r\n",
+        (unsigned long)timebase_uptime_s(), (unsigned long)RCC->CSR);
+    out("ident   %s dev %08lX gen %u\r\n",
+        v.provisioned ? "stored" : "NONE", (unsigned long)v.dev_id, v.key_gen);
+    out("paired  %s", v.paired ? "yes" : "no");
+    if (v.paired)
+        out("  hub %08lX net %04X slot %u every %u",
+            (unsigned long)v.hub_id, v.net_id, v.slot, v.report_every);
+    out("\r\n");
+    out("clock   sf %lu  period %lu us  since beacon %lu us  %s%s\r\n",
+        (unsigned long)v.superframe, (unsigned long)v.period_us,
+        (unsigned long)v.since_beacon_us,
+        v.schedulable ? "schedulable" : "stale",
+        v.recovering ? "  RECOVERING" : "");
+    /* Absent rather than zero: an unheard beacon has no level. */
+    if (v.rssi_valid)
+        out("rssi_down %d dBm\r\n", (int)v.rssi_down_dbm);
+    else
+        out("rssi_down never heard\r\n");
+    /* Absent rather than zero: no downlink yet is not a floor of zero. */
+    if (v.tx_floor_known)
+        out("tx floor  above %lu (from the hub's last downlink)\r\n",
+            (unsigned long)v.tx_floor);
+    else
+        out("tx floor  none yet - no downlink opened since boot\r\n");
+    out("counts  reports %lu  missed %lu  downlinks %lu  recoveries %lu\r\n",
+        (unsigned long)v.reports_sent, (unsigned long)v.beacons_missed,
+        (unsigned long)v.downlinks_applied, (unsigned long)v.recover_entered);
+    out("invites heard %lu  refused %lu\r\n",
+        (unsigned long)v.invites_heard, (unsigned long)v.invites_refused);
+}
+
+static void show_ident(void) {
+    uint8_t pk[X25519_PUB_LEN];
+    device_view_t v;
+
+    device_snapshot(&v);
+    if (!v.provisioned) {
+        out("no identity in flash\r\n");
+        return;
+    }
+    out("dev %08lX\r\npubkey ", (unsigned long)v.dev_id);
+    if (device_pubkey(pk) == 0) {
+        for (unsigned i = 0; i < sizeof(pk); i++)
+            out("%02X", pk[i]);
+    } else {
+        out("unavailable");
+    }
+    /* The id is what the operator types; the key above is only to compare.
+     * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
+    out("\r\nenrol with: device add %08lX\r\n", (unsigned long)v.dev_id);
+}
+
+static void show_radio(void) {
+    out("bitrate %lu bps  deviation %lu Hz  bw %lu Hz\r\n",
+        (unsigned long)RADIO_BITRATE_BPS, (unsigned long)RADIO_DEVIATION_HZ,
+        (unsigned long)RADIO_RX_BW_DEV_HZ);
+    out("power   %d dBm commanded\r\n", (int)radio_power_dbm());
+    out("grid    from %lu Hz, spacing %lu Hz\r\n",
+        (unsigned long)RADIO_CH_BASE_HZ, (unsigned long)RADIO_CH_SPACING_HZ);
+    out("slots   %u opportunities, stride %u, slot %lu us, guard %lu us\r\n",
+        (unsigned)RADIO_SLOT_OPPS, (unsigned)RADIO_SLOT_STRIDE,
+        (unsigned long)RADIO_SLOT_US, (unsigned long)RADIO_SLOT_GUARD_US);
+}
+
+static void show_vectors(void) {
+    vectors_report_t v;
+
+    vectors_report(&v);
+    out("pair_v4 %s\r\nwire_v4 %s\r\n", v.pair_v4, v.wire_v4);
+    out("hop shared %s\r\nhop local  %s  %s\r\n", v.hop_shared, v.hop_local,
+        v.hop_local_matches_shared ? "agrees" : "DISAGREES");
+}
+
+static void show_load(void) {
+    uint32_t window = load_window_us();
+
+    out("window %lu us\r\n", (unsigned long)window);
+    for (int c = 0; c < LOAD_CATEGORIES; c++) {
+        uint32_t us = load_us((load_cat_t)c);
+        /* Permille, not percent: the quiet categories round to nothing at 1%. */
+        uint32_t per = window ? (uint32_t)(((uint64_t)us * 1000u) / window) : 0u;
+        out("%-12s %8lu us  %3lu.%lu%%  calls %lu  worst %lu us\r\n",
+            load_name((load_cat_t)c), (unsigned long)us,
+            (unsigned long)(per / 10u), (unsigned long)(per % 10u),
+            (unsigned long)load_calls((load_cat_t)c),
+            (unsigned long)load_max_us((load_cat_t)c));
+    }
+}
+
+static void show_help(void) {
+    out("state    what the node is doing\r\n");
+    out("ident    identity and public key, to enrol on a hub\r\n");
+    out("radio    the PHY and grid this build compiled\r\n");
+    out("vectors  the test vectors this build was compiled against\r\n");
+    out("load     where the CPU's time goes\r\n");
+    out("curve    x25519 and the wire vectors, with their cost\r\n");
+    out("join     the pairing window's counters and its timing\r\n");
+    out("?        this list\r\n");
+    /* Stated here because its absence is the design, not an omission. */
+    out("\r\nread-only: nothing here starts or stops the node.\r\n");
+}
+
+/* The KATs had no caller, which is how a self-test reads as passing.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
+static void show_curve(void) {
+    crypto_x25519_result_t k;
+    crypto_wire_result_t w;
+
+    if (crypto_x25519_kat(&k) != 0) {
+        out("x25519 kat did not run\r\n");
+        return;
+    }
+    out("rfc7748  public %s  shared %s  low-order refused %s\r\n",
+        k.point_ok ? "ok" : "FAIL", k.shared_ok ? "ok" : "FAIL",
+        k.reject_ok ? "ok" : "FAIL");
+    out("  scalar mult %lu us   ecdh %lu us\r\n",
+        (unsigned long)k.mul_us, (unsigned long)k.ecdh_us);
+
+    if (crypto_wire_kat(&w) != 0) {
+        out("wire kat did not run\r\n");
+        return;
+    }
+    out("wire_v4 %s  point %s  ecdh %s  session %s  hop %s  ratchet %s\r\n",
+        w.digest, w.point_valid ? "ok" : "FAIL", w.ecdh_ok ? "ok" : "FAIL",
+        w.session_ok ? "ok" : "FAIL", w.hop_ok ? "ok" : "FAIL",
+        w.ratchet_ok ? "ok" : "FAIL");
+    out("  gcm seal %s  open %s  forge refused %s  odd %s/%s  low-order %s\r\n",
+        w.cipher_ok ? "ok" : "FAIL", w.open_ok ? "ok" : "FAIL",
+        w.forge_rejected ? "ok" : "FAIL", w.odd_seal_ok ? "ok" : "FAIL",
+        w.odd_open_ok ? "ok" : "FAIL", w.shared_reject_ok ? "ok" : "FAIL");
+    out("  total %lu us\r\n", (unsigned long)w.total_us);
+}
+
+/* Measured, not assumed: this delay decides whether the hub is listening yet.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
+static void show_join(void) {
+    join_stats_t j;
+
+    join_stats(&j);
+    out("req sent %lu  refused rc %u  last type %02x len %u\r\n",
+        (unsigned long)j.req_sent, (unsigned)j.invite_refused,
+        (unsigned)j.last_type, (unsigned)j.last_len);
+    out("trigger -> request  %lu us\r\n", (unsigned long)j.beacon_to_req_us);
+    out("rsp      heard %lu  timeout %lu  crc %lu  skipped %lu (last type %02x)  len %u\r\n",
+        (unsigned long)j.rsp_heard, (unsigned long)j.rsp_timeout,
+        (unsigned long)j.rsp_crc_err, (unsigned long)j.rsp_skipped,
+        (unsigned)j.rsp_other_type, (unsigned)j.rsp_len);
+    /* Between heard and conf sent: the refusals that used to leave no trace here.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
+    out("rsp      bad frame %lu  wrong ids %lu  eph is static %lu  bad point %lu  confirm bad %lu\r\n",
+        (unsigned long)j.rsp_bad_frame, (unsigned long)j.rsp_wrong_ids,
+        (unsigned long)j.rsp_eph_is_static, (unsigned long)j.rsp_bad_point,
+        (unsigned long)j.rsp_confirm_bad);
+    out("conf     sent %lu\r\n", (unsigned long)j.conf_sent);
+    out("accept   heard %lu  timeout %lu  crc %lu  skipped %lu (last type %02x)\r\n",
+        (unsigned long)j.accept_heard, (unsigned long)j.accept_timeout,
+        (unsigned long)j.accept_crc_err, (unsigned long)j.accept_skipped,
+        (unsigned)j.accept_other_type);
+    out("accept   bad frame %lu  outside window %lu  bad tag %lu  paired %lu  store failed %lu\r\n",
+        (unsigned long)j.accept_bad_frame, (unsigned long)j.accept_outside_window,
+        (unsigned long)j.accept_bad_tag, (unsigned long)j.paired,
+        (unsigned long)j.store_failed);
+}
+
+static void dispatch(void) {
+    if (cmd_len == 0)
+        return;
+    if (strcmp(cmd, "state") == 0)        show_state();
+    else if (strcmp(cmd, "ident") == 0)   show_ident();
+    else if (strcmp(cmd, "radio") == 0)   show_radio();
+    else if (strcmp(cmd, "vectors") == 0) show_vectors();
+    else if (strcmp(cmd, "load") == 0)    show_load();
+    else if (strcmp(cmd, "curve") == 0)   show_curve();
+    else if (strcmp(cmd, "join") == 0)    show_join();
+    else if (strcmp(cmd, "?") == 0)       show_help();
+    else out("%s? try ?\r\n", cmd);
+}
+
+void console_init(void) {
+    rx_head = rx_tail = 0;
+    cmd_len = resp_len = 0;
+    __HAL_UART_ENABLE_IT(&hcom_uart[COM1], UART_IT_RXNE);
+    HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
+    HAL_NVIC_EnableIRQ(LPUART1_IRQn);
+    out("\r\nwl55 device %s  read-only console\r\n>>> ", BUILD_ID_STR);
+    flush();
+}
+
+void console_poll(void) {
+    while (rx_tail != rx_head) {
+        uint8_t c = rx_buf[rx_tail];
+        rx_tail = (uint8_t)((rx_tail + 1u) % CON_RX_LEN);
+
+        if (c == '\r' || c == '\n') {
+            cmd[cmd_len] = '\0';
+            out("\r\n");
+            dispatch();
+            out(">>> ");
+            flush();
+            cmd_len = 0;
+        } else if ((c == 0x7F || c == '\b') && cmd_len > 0) {
+            cmd_len--;
+            vcp_write((const uint8_t *)"\b \b", 3, 100);
+        } else if (c >= 0x20 && c < 0x7F && cmd_len < CON_CMD_LEN - 1) {
+            cmd[cmd_len++] = (char)c;
+            vcp_write(&c, 1, 100);
+        }
+    }
+}
+
+/* Called from LPUART1_IRQHandler; keeps the ISR to a byte push. */
+void console_rx_byte(uint8_t b) {
+    uint8_t next = (uint8_t)((rx_head + 1u) % CON_RX_LEN);
+    if (next != rx_tail) {
+        rx_buf[rx_head] = b;
+        rx_head = next;
+    }
+}
+
+#else  /* WL55_CONSOLE */
+
+void console_init(void) { }
+void console_poll(void) { }
+void console_rx_byte(uint8_t b) { (void)b; }
+
+#endif

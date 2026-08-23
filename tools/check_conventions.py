@@ -4,7 +4,7 @@ import io, os, re, subprocess, sys, tokenize
 
 # CubeMX and vendor files: regeneration overwrites them, so the rules cannot hold there.
 GENERATED = re.compile(
-    r"(^|/)(Drivers/|Middlewares/|cmake/|build/|\.git/|\.venv/|__pycache__/|\.cache/"
+    r"(^|/)(Drivers/|Middlewares/|cmake/|build/|third_party/|\.git/|\.venv/|__pycache__/|\.cache/"
     r"|system_stm32wlxx|stm32wlxx_(hal_conf|hal_msp|it|nucleo_conf)"
     r"|syscalls\.c|sysmem\.c|startup_)")
 # Vector files are emitted by tools/; the generator is the hand-written artifact.

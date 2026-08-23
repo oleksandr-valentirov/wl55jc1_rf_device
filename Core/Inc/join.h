@@ -54,7 +54,7 @@ typedef struct {
 } join_stats_t;
 
 typedef struct {
-    uint8_t  hub_static[33];     /* provisioned out of band; Z1 needs it */
+    uint8_t  hub_static[32];     /* learned from the invitation - ADR-0024 */
     uint8_t  have_hub_static;
     uint32_t superframe;         /* from the join beacon */
     uint8_t  slot;               /* granted */

@@ -1,4 +1,4 @@
-/* The device's half of the four-frame exchange, from pair_v2 and the shared header.
+/* The device's half of the four-frame exchange, from pair_v4 and the shared header.
  * radio_devices_docs/wl55_device/radio/pairing.md */
 #include <string.h>
 
@@ -9,8 +9,8 @@
 #include "timebase.h"
 #include "store.h"
 #include "pair_init.h"
-#include "pair_v2.h"
-#include "wire_v3.h"
+#include "pair_v4.h"
+#include "wire_v4.h"
 
 static join_stats_t stats;
 static uint8_t last_req[sizeof(radio_pair_req_t)];
@@ -23,7 +23,7 @@ int join_hub_static_ready(join_result_t *res) {
         return 1;
     if (store_init(&st) != 0 || !st.valid)
         return 0;
-    if (st.hub_static[0] != 0x02u && st.hub_static[0] != 0x03u)
+    if (!store_hub_static_set(&st))
         return 0;
     memcpy(res->hub_static, st.hub_static, sizeof(res->hub_static));
     res->have_hub_static = 1;
@@ -45,23 +45,19 @@ static uint32_t get_le32(const uint8_t *p) {
 }
 
 
-static void compress_pub(const uint8_t *sec1_65, uint8_t *out33) {
-    out33[0] = (uint8_t)(0x02u | (sec1_65[P256_PUB_LEN - 1] & 1u));
-    memcpy(out33 + 1, sec1_65 + 1, 32);
-}
 
 /* Wire fields little-endian, crypto inputs big-endian; the vectors pin whole frames.
  * radio_devices_docs/wl55_device/radio/pairing.md */
 static void build_request(const pairing_ctx_t *p, uint32_t superframe, uint8_t *out) {
     radio_pair_req_t f;
     f.type       = RADIO_FRAME_PAIR_REQ;
-    f.version    = RADIO_PROTO_VERSION;
+    f.version    = RADIO_PAIR_VERSION;
     f.net_id     = p->net_id;
     f.hub_id     = p->hub_id;
     f.dev_id     = p->dev_id;
     f.superframe = superframe;
     memcpy(f.dev_nonce, p->dev_nonce, sizeof(f.dev_nonce));
-    compress_pub(p->pub, f.pubkey);
+    memcpy(f.pubkey, p->pub, sizeof(f.pubkey));
     memcpy(out, &f, sizeof(f));
 }
 
@@ -69,7 +65,7 @@ static void build_confirm(const pairing_ctx_t *p, const uint8_t *confirm_dev,
                           uint8_t *out) {
     radio_pair_conf_t c;
     c.type    = RADIO_FRAME_PAIR_CONF;
-    c.version = RADIO_PROTO_VERSION;
+    c.version = RADIO_PAIR_VERSION;
     c.hub_id  = p->hub_id;
     c.dev_id  = p->dev_id;
     memcpy(c.confirm, confirm_dev, sizeof(c.confirm));
@@ -143,14 +139,12 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
                            const uint8_t *rx, uint8_t len,
                            exchange_keys_t *keys) {
     const uint32_t req_superframe = res->superframe;
-    uint8_t peer[P256_PUB_LEN];
     uint8_t z1[32], z2[32];
     uint8_t transcript[EXCHANGE_TRANSCRIPT_LEN];
     uint8_t salt[EXCHANGE_SALT_LEN];
-    uint8_t dev_c[33];
 
     if (len != sizeof(radio_pair_rsp_t) || rx[0] != RADIO_FRAME_PAIR_RSP ||
-        rx[1] != RADIO_PROTO_VERSION) {
+        rx[1] != RADIO_PAIR_VERSION) {
         stats.rsp_bad_frame++;
         return -3;
     }
@@ -170,29 +164,17 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
         stats.rsp_eph_is_static++;
         return -5;
     }
-    if (crypto_p256_decompress(eph_c[0], eph_c + 1, peer) != 0) {
-        stats.rsp_bad_point++;
-        return -6;
-    }
-
-    uint8_t hub_static_full[P256_PUB_LEN];
-    if (crypto_p256_decompress(res->hub_static[0], res->hub_static + 1,
-                               hub_static_full) != 0) {
-        stats.rsp_bad_point++;
-        return -6;
-    }
     /* Hub term first in every concatenation: the order is a whole-key error with no symptom.
      * radio_devices_docs/wl55_device/radio/pairing.md */
-    if (crypto_p256_ecdh(p->priv, hub_static_full, z1) != 0 ||
-        crypto_p256_ecdh(p->priv, peer, z2) != 0) {
+    if (crypto_x25519_ecdh(p->priv, res->hub_static, z1) != 0 ||
+        crypto_x25519_ecdh(p->priv, eph_c, z2) != 0) {
         stats.rsp_bad_point++;
         return -6;
     }
 
-    compress_pub(p->pub, dev_c);
     exchange_salt(p->hub_id, p->dev_id, req_superframe, p->dev_nonce, salt);
     exchange_transcript(p->hub_id, p->dev_id, req_superframe, p->dev_nonce,
-                        res->hub_static, eph_c, dev_c, transcript);
+                        res->hub_static, eph_c, p->pub, transcript);
     exchange_derive(z1, z2, salt, transcript, keys);
     memset(z1, 0, sizeof(z1));
     memset(z2, 0, sizeof(z2));
@@ -221,10 +203,10 @@ static int handle_accept(join_result_t *res, const uint8_t *rx, uint8_t len,
      * radio_devices_docs/wl55_device/radio/pairing.md */
     uint8_t plain[sizeof(radio_pair_grant_t)];
     _Static_assert(sizeof(radio_pair_grant_t) == 19u,
-                   "the sealed grant is 19 bytes; pair_v2 pins the frame at 50");
+                   "the sealed grant is 19 bytes; pair_v4 pins the frame at 50");
 
     if (len != sizeof(radio_pair_accept_t) || rx[0] != RADIO_FRAME_PAIR_ACCEPT ||
-        rx[1] != RADIO_PROTO_VERSION) {
+        rx[1] != RADIO_PAIR_VERSION) {
         stats.accept_bad_frame++;
         return -8;
     }
@@ -284,7 +266,8 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
     exchange_keys_t keys;
     int rc;
 
-    if (!join_hub_static_ready(res))
+    /* No key is needed to listen: the invitation carries the hub's. ADR-0024 */
+    if (ic == NULL && !join_hub_static_ready(res))
         return -20;
     if (!p->have_key && pairing_keygen(p) != 0)
         return -21;
@@ -299,10 +282,6 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
     if (ic != NULL) {
         uint8_t inv[sizeof(radio_pair_init_t)];
         uint32_t sf = 0;
-        /* Before the receive: paid after, Z1 puts 103 ms between trigger and request.
-         * radio_devices_docs/wl55_device/radio/pairing.md */
-        if (pair_init_prepare(ic) != 0)
-            return -31;
         rc = receive_until(inv, sizeof(inv), &info, RADIO_FRAME_PAIR_INIT,
                            micros(), timeout_ms * 1000u, &stats.rsp_skipped,
                            &stats.beacon_crc_err, &stats.last_type);
@@ -312,18 +291,17 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         }
         t_beacon = micros();
         pair_init_rc_t irc = pair_init_verify(ic, inv, info.len, millis_hw(),
-                                              ceiling, &sf);
+                                              ceiling, &sf, res->hub_static);
         if (irc != PAIR_INIT_OK) {
             stats.invite_refused = (uint8_t)irc;
             return -30;
         }
+        /* The invitation is where the hub becomes known; nothing typed. ADR-0024 */
+        res->have_hub_static = 1;
         p->hub_id = (uint32_t)inv[4] | ((uint32_t)inv[5] << 8) |
                     ((uint32_t)inv[6] << 16) | ((uint32_t)inv[7] << 24);
         p->net_id = (uint16_t)((uint16_t)inv[2] | ((uint16_t)inv[3] << 8));
         res->superframe = sf;
-        /* Only after the MAC, and only forwards, as the ceiling is.
-         * radio_devices_docs/wl55_device/radio/pairing.md */
-        (void)store_save_init_ceiling(sf);
     } else {
         rc = listen_join_beacon(timeout_ms, &beacon);
         if (rc != 0)
@@ -343,6 +321,10 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         return -23;
     build_request(p, res->superframe, frame);
     memcpy(last_req, frame, sizeof(last_req));
+    /* Not a guess and not a guard band: the hub is not listening before this.
+     * radio_devices_docs/radio/pairing.md */
+    while ((uint32_t)(micros() - t_beacon) < RADIO_PAIR_REQ_LEAD_US)
+        ;
     if (radio_send(frame, sizeof(frame), NULL) != 0)
         return -24;
     stats.beacon_to_req_us = micros() - t_beacon;
@@ -389,6 +371,13 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
     res->dev_id_be = p->dev_id;
     rc = handle_accept(res, rx, info.len, &keys);
     memset(&keys, 0, sizeof(keys));
+    /* The one caller of store_save_hub_static, and it is the pairing path.
+     * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
+    if (rc == 0 && res->have_hub_static &&
+        store_save_hub_static(res->hub_static) != 0) {
+        stats.store_failed++;
+        return -13;
+    }
     if (rc == 0 && store_save_pairing(res->session, res->hop_key, res->slot,
                                       res->report_every) != 0) {
         /* Reported, not swallowed: a reset from here is an unpaired device someone visits.
@@ -405,7 +394,7 @@ int join_restore(join_result_t *res) {
     store_state_t st;
     if (store_init(&st) != 0 || !st.valid || st.report_every == 0u)
         return 0;
-    if (st.hub_static[0] != 0x02u && st.hub_static[0] != 0x03u)
+    if (!store_hub_static_set(&st))
         return 0;
     memcpy(res->hub_static, st.hub_static, sizeof(res->hub_static));
     res->have_hub_static = 1;
@@ -502,7 +491,7 @@ int join_selftest(join_selftest_t *r) {
     pairing_ctx_t vp;
     memset(&vp, 0, sizeof(vp));
     memcpy(vp.priv, V_DEV_PRIV, sizeof(vp.priv));
-    if (crypto_p256_public_from_private(vp.priv, vp.pub) == 0) {
+    if (crypto_x25519_public_from_private(vp.priv, vp.pub) == 0) {
         vp.have_key = 1;
         vp.hub_id = 0x33442211u;
         vp.dev_id = 0x0000002Au;
@@ -516,7 +505,7 @@ int join_selftest(join_selftest_t *r) {
         join_result_t vres;
         exchange_keys_t vkeys;
         memset(&vres, 0, sizeof(vres));
-        memcpy(vres.hub_static, V_HUB_PUB_C, sizeof(vres.hub_static));
+        memcpy(vres.hub_static, V_HUB_PUB, sizeof(vres.hub_static));
         /* The whole response path on the hub's bytes: points, both ECDH, transcript, schedule.
          * radio_devices_docs/wl55_device/radio/pairing.md */
         vres.superframe = PAIR_REQ_SUPERFRAME;
@@ -533,7 +522,7 @@ int join_selftest(join_selftest_t *r) {
          * radio_devices_docs/wl55_device/radio/pairing.md */
         uint8_t swapped[sizeof(PV_FRAME_RSP)];
         memcpy(swapped, PV_FRAME_RSP, sizeof(swapped));
-        memcpy(swapped + offsetof(radio_pair_rsp_t, eph_pubkey), V_HUB_PUB_C, 33);
+        memcpy(swapped + offsetof(radio_pair_rsp_t, eph_pubkey), V_HUB_PUB, 33);
         r->eph_static_rejected =
             handle_response(&vp, &vres, swapped, sizeof(swapped), &vkeys) == -5;
         memset(&vkeys, 0, sizeof(vkeys));

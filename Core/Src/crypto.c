@@ -6,28 +6,16 @@
 #include "crypto.h"
 #include "load.h"
 #include "crypto_vectors.h"
+#include "monocypher.h"
+#include "sha256.h"
+#include "wire_v4.h"
 #include "timebase.h"
 
 extern CRYP_HandleTypeDef hcryp;
-extern PKA_HandleTypeDef  hpka;
 extern RNG_HandleTypeDef  hrng;
 
 #define GCM_PT_LEN      (sizeof(vec_gcm_pt))
 #define GCM_BUF_WORDS   ((GCM_PT_LEN + 3u) / 4u)
-
-/* Charged apart from AES: PKA time is time a scheduler could hand away.
- * radio_devices_docs/wl55_device/security/self-tests.md */
-#define PKA_TIMED(name, hal, argtype)                                          \
-    static HAL_StatusTypeDef name(PKA_HandleTypeDef *h, argtype *a, uint32_t t) { \
-        load_enter(LOAD_PKA);                                                  \
-        HAL_StatusTypeDef st = hal(h, a, t);                                   \
-        load_exit();                                                           \
-        return st;                                                             \
-    }
-
-PKA_TIMED(pka_eccmul_timed, HAL_PKA_ECCMul, PKA_ECCMulInTypeDef)
-PKA_TIMED(pka_pointcheck_timed, HAL_PKA_PointCheck, PKA_PointCheckInTypeDef)
-PKA_TIMED(pka_modexp_timed, HAL_PKA_ModExp, PKA_ModExpInTypeDef)
 
 /* Packed explicitly: KEYRx/IVRx are not subject to the DATATYPE swap.
  * radio_devices_docs/wl55_device/security/README.md */
@@ -143,70 +131,39 @@ int crypto_gcm_kat(crypto_kat_result_t *r) {
     return 0;
 }
 
-int crypto_p256_kat(crypto_p256_result_t *r) {
-    PKA_ECCMulInTypeDef mul = {0};
-    PKA_PointCheckInTypeDef chk = {0};
-    PKA_ECCMulOutTypeDef out = {0};
-    uint8_t qx[32], qy[32], bad_qy[32];
+int crypto_x25519_kat(crypto_x25519_result_t *r) {
+    /* RFC 7748 6.1: a vector neither firmware wrote, and both must reproduce.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
+    uint8_t pub[32], z[32];
+    uint32_t t0;
 
     memset(r, 0, sizeof(*r));
 
-    mul.scalarMulSize = sizeof(vec_p256_d);
-    mul.modulusSize   = sizeof(p256_prime);
-    mul.coefSign      = 1;              /* a = -3, so |a| = 3 with a negative sign */
-    mul.coefA         = p256_abs_a;
-    mul.modulus       = p256_prime;
-    mul.pointX        = p256_gx;
-    mul.pointY        = p256_gy;
-    mul.scalarMul     = vec_p256_d;
-
-    uint32_t t0 = micros();
-    if (pka_eccmul_timed(&hpka, &mul, 5000) != HAL_OK)
+    t0 = micros();
+    if (crypto_x25519_public_from_private(vec_x25519_a_priv, pub) != 0)
         return -1;
     r->mul_us = micros() - t0;
-    out.ptX = qx;
-    out.ptY = qy;
-    HAL_PKA_ECCMul_GetResult(&hpka, &out);
-    r->point_ok = (memcmp(qx, vec_p256_qx, sizeof(qx)) == 0) &&
-                  (memcmp(qy, vec_p256_qy, sizeof(qy)) == 0);
+    r->point_ok = (memcmp(pub, vec_x25519_a_pub, 32) == 0);
 
-    chk.modulusSize = sizeof(p256_prime);
-    chk.coefSign    = 1;
-    chk.coefA       = p256_abs_a;
-    chk.coefB       = p256_b;
-    chk.modulus     = p256_prime;
-    chk.pointX      = vec_p256_qx;
-    chk.pointY      = vec_p256_qy;
+    if (crypto_x25519_public_from_private(vec_x25519_b_priv, pub) != 0)
+        return -1;
+    r->point_ok = r->point_ok && (memcmp(pub, vec_x25519_b_pub, 32) == 0);
+
+    /* Both directions: one of them agreeing by luck is not the same claim. */
     t0 = micros();
-    if (pka_pointcheck_timed(&hpka, &chk, 5000) != HAL_OK)
+    if (crypto_x25519_ecdh(vec_x25519_a_priv, vec_x25519_b_pub, z) != 0)
         return -1;
-    r->check_us  = micros() - t0;
-    r->valid_ok  = (HAL_PKA_PointCheck_IsOnCurve(&hpka) == 1u);
+    r->ecdh_us = micros() - t0;
+    r->shared_ok = (memcmp(z, vec_x25519_shared, 32) == 0);
+    if (crypto_x25519_ecdh(vec_x25519_b_priv, vec_x25519_a_pub, z) != 0)
+        return -1;
+    r->shared_ok = r->shared_ok && (memcmp(z, vec_x25519_shared, 32) == 0);
 
-    /* An off-curve point is what an invalid-curve attack looks like on the wire.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    memcpy(bad_qy, vec_p256_qy, sizeof(bad_qy));
-    bad_qy[31] ^= 0x01u;
-    chk.pointY = bad_qy;
-    if (pka_pointcheck_timed(&hpka, &chk, 5000) != HAL_OK)
-        return -1;
-    r->reject_ok = (HAL_PKA_PointCheck_IsOnCurve(&hpka) == 0u);
+    /* A low-order point yields all zeros, and using it would be the failure. */
+    r->reject_ok = (crypto_x25519_ecdh(vec_x25519_a_priv, vec_x25519_low_order, z) == -2);
     return 0;
 }
 
-/* Included from the hub's tree, never copied: both sides must check the same bytes.
- * radio_devices_docs/wl55_device/security/self-tests.md */
-#include "wire_v3.h"
-#include "sha256.h"
-
-/* Pinned: a bumped version arriving here should stop the compiler, not the radio.
- * radio_devices_docs/wl55_device/security/self-tests.md */
-#if WIRE_VECTORS_VERSION != 3
-#error "wire vector set changed; re-check the device side against the new bytes"
-#endif
-
-/* One path both directions, so key, IV and header setup cannot drift apart.
- * radio_devices_docs/wl55_device/security/README.md */
 static int gcm_run_inner(const uint8_t *key16, const uint8_t *nonce12,
                    const uint8_t *aad, uint32_t aad_len,
                    const uint8_t *in, uint16_t len, uint8_t *out, uint8_t *tag,
@@ -281,17 +238,6 @@ int crypto_gcm_open(const uint8_t *key16, const uint8_t *nonce12,
 
 /* Constant time over secret scalars: an early exit leaks where they differ.
  * radio_devices_docs/wl55_device/security/self-tests.md */
-static int be_less(const uint8_t *a, const uint8_t *b) {
-    uint8_t lt = 0, gt = 0;
-    for (int i = 0; i < 32; i++) {
-        uint8_t ai = a[i], bi = b[i];
-        uint8_t eq = (uint8_t)~(lt | gt);
-        lt |= (uint8_t)(eq & (uint8_t)(0u - (uint8_t)(ai < bi)));
-        gt |= (uint8_t)(eq & (uint8_t)(0u - (uint8_t)(ai > bi)));
-    }
-    return lt != 0;
-}
-
 static int is_zero(const uint8_t *a, uint32_t len) {
     uint8_t acc = 0;
     for (uint32_t i = 0; i < len; i++)
@@ -299,124 +245,11 @@ static int is_zero(const uint8_t *a, uint32_t len) {
     return acc == 0;
 }
 
-static int scalar_mul(const uint8_t *scalar, const uint8_t *px, const uint8_t *py,
-                      uint8_t *qx, uint8_t *qy) {
-    PKA_ECCMulInTypeDef in = {0};
-    PKA_ECCMulOutTypeDef out = {0};
-
-    in.scalarMulSize = 32;
-    in.modulusSize   = sizeof(p256_prime);
-    in.coefSign      = 1;
-    in.coefA         = p256_abs_a;
-    in.modulus       = p256_prime;
-    in.pointX        = px;
-    in.pointY        = py;
-    in.scalarMul     = scalar;
-    if (pka_eccmul_timed(&hpka, &in, 5000) != HAL_OK)
-        return -1;
-    out.ptX = qx;
-    out.ptY = qy;
-    HAL_PKA_ECCMul_GetResult(&hpka, &out);
+int crypto_x25519_public_from_private(const uint8_t *priv, uint8_t *pub) {
+    load_enter(LOAD_CURVE);
+    crypto_x25519_public_key(pub, priv);
+    load_exit();
     return 0;
-}
-
-/* 256-bit big-endian helpers; everything expensive goes to the PKA. */
-static uint8_t be_add(const uint8_t *a, const uint8_t *b, uint8_t *out) {
-    uint32_t carry = 0;
-    for (int i = 31; i >= 0; i--) {
-        uint32_t v = (uint32_t)a[i] + b[i] + carry;
-        out[i] = (uint8_t)v;
-        carry = v >> 8;
-    }
-    return (uint8_t)carry;
-}
-
-static uint8_t be_sub(const uint8_t *a, const uint8_t *b, uint8_t *out) {
-    int32_t borrow = 0;
-    for (int i = 31; i >= 0; i--) {
-        int32_t v = (int32_t)a[i] - b[i] - borrow;
-        borrow = (v < 0);
-        out[i] = (uint8_t)(v + (borrow ? 256 : 0));
-    }
-    return (uint8_t)borrow;
-}
-
-/* out = (a + b) mod p, where a and b are already reduced. */
-static void mod_add(const uint8_t *a, const uint8_t *b, uint8_t *out) {
-    uint8_t t[32];
-    uint8_t carry = be_add(a, b, t);
-    uint8_t u[32];
-    uint8_t borrow = be_sub(t, p256_prime, u);
-    /* Take the reduced value if the sum overflowed or did not underflow. */
-    int use_u = carry || !borrow;
-    memcpy(out, use_u ? u : t, 32);
-}
-
-static void mod_sub(const uint8_t *a, const uint8_t *b, uint8_t *out) {
-    uint8_t t[32];
-    if (be_sub(a, b, t))
-        be_add(t, p256_prime, t);
-    memcpy(out, t, 32);
-}
-
-static int mod_exp(const uint8_t *base, const uint8_t *exp, uint8_t *out) {
-    PKA_ModExpInTypeDef in = {0};
-    in.expSize = 32;
-    in.OpSize  = 32;
-    in.pExp    = exp;
-    in.pOp1    = base;
-    in.pMod    = p256_prime;
-    if (pka_modexp_timed(&hpka, &in, 5000) != HAL_OK)
-        return -1;
-    HAL_PKA_ModExp_GetResult(&hpka, out);
-    return 0;
-}
-
-int crypto_p256_decompress(uint8_t prefix, const uint8_t *x, uint8_t *sec1_out) {
-    static const uint8_t three[32] = {[31] = 3};
-    uint8_t t[32], x3[32], tx[32], y[32], neg[32];
-
-    if (prefix != 0x02u && prefix != 0x03u)
-        return -1;
-    /* X is attacker supplied and must be a field element before the curve equation runs.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    if (!be_less(x, p256_prime))
-        return -2;
-
-    if (mod_exp(x, three, x3) != 0)          /* x^3 mod p */
-        return -1;
-    mod_add(x, x, tx);                        /* 2x */
-    mod_add(tx, x, tx);                       /* 3x, since a = -3 */
-    mod_sub(x3, tx, t);
-    mod_add(t, p256_b, t);                    /* t = x^3 - 3x + b */
-
-    if (mod_exp(t, p256_sqrt_exp, y) != 0)
-        return -1;
-
-    /* p = 3 mod 4 gives a root only when one exists, so square it back and check.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    uint8_t check[32];
-    if (mod_exp(y, (const uint8_t[32]){[31] = 2}, check) != 0)
-        return -1;
-    if (memcmp(check, t, 32) != 0)
-        return -2;                            /* X is not on the curve */
-
-    if ((y[31] & 1u) != (prefix & 1u)) {
-        mod_sub(p256_prime, y, neg);
-        memcpy(y, neg, 32);
-    }
-    if (is_zero(y, 32))
-        return -2;                            /* the identity is not a key */
-
-    sec1_out[0] = 0x04u;
-    memcpy(sec1_out + 1, x, 32);
-    memcpy(sec1_out + 33, y, 32);
-    return 0;
-}
-
-int crypto_p256_public_from_private(const uint8_t *priv, uint8_t *pub_sec1) {
-    pub_sec1[0] = 0x04u;
-    return scalar_mul(priv, p256_gx, p256_gy, pub_sec1 + 1, pub_sec1 + 33);
 }
 
 /* SEIS latches while idle and HAL_RNG_Generate still returns HAL_OK.
@@ -441,108 +274,64 @@ int crypto_rng_health(uint32_t *sr) {
     return (*sr & (RNG_SR_SEIS | RNG_SR_SECS | RNG_SR_CEIS | RNG_SR_CECS)) ? -1 : 0;
 }
 
-int crypto_p256_keygen(uint8_t *priv, uint8_t *pub_sec1) {
-    /* Rejection sampling: clamping into range would bias it, and the bias is the attack.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    for (int tries = 0; tries < 16; tries++) {
-        for (int i = 0; i < 8; i++) {
-            uint32_t w = 0;
-            if (crypto_rng_word(&w) != 0) {
-                /* The whole scalar: part-fresh, part-stack is a plausible key nothing can spot.
-                 * radio_devices_docs/wl55_device/security/self-tests.md */
-                memset(priv, 0, 32);
-                return -1;
-            }
-            priv[4 * i]     = (uint8_t)(w >> 24);
-            priv[4 * i + 1] = (uint8_t)(w >> 16);
-            priv[4 * i + 2] = (uint8_t)(w >> 8);
-            priv[4 * i + 3] = (uint8_t)w;
-        }
-        if (is_zero(priv, 32) || !be_less(priv, p256_order))
-            continue;
-        pub_sec1[0] = 0x04u;
-        if (scalar_mul(priv, p256_gx, p256_gy, pub_sec1 + 1, pub_sec1 + 33) != 0)
+int crypto_x25519_keygen(uint8_t *priv, uint8_t *pub) {
+    for (int i = 0; i < 8; i++) {
+        uint32_t w = 0;
+        if (crypto_rng_word(&w) != 0) {
+            /* The whole scalar: part-fresh, part-stack is a plausible key nothing can spot.
+             * radio_devices_docs/wl55_device/security/self-tests.md */
+            memset(priv, 0, 32);
             return -1;
-        return 0;
+        }
+        priv[4 * i]     = (uint8_t)w;
+        priv[4 * i + 1] = (uint8_t)(w >> 8);
+        priv[4 * i + 2] = (uint8_t)(w >> 16);
+        priv[4 * i + 3] = (uint8_t)(w >> 24);
     }
-    return -1;
+    /* RFC 7748 5: clamping, not rejection sampling - every 32 bytes is a scalar. */
+    priv[0]  = (uint8_t)(priv[0] & 248u);
+    priv[31] = (uint8_t)((priv[31] & 127u) | 64u);
+    return crypto_x25519_public_from_private(priv, pub);
 }
 
-int crypto_p256_ecdh(const uint8_t *priv, const uint8_t *peer_sec1, uint8_t *shared_x) {
-    PKA_PointCheckInTypeDef chk = {0};
-    uint8_t qy[32];
-
-    /* Validate before use, every time: an unvalidated point recovers the private key.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    if (peer_sec1[0] != 0x04u)
-        return -1;
-    chk.modulusSize = sizeof(p256_prime);
-    chk.coefSign    = 1;
-    chk.coefA       = p256_abs_a;
-    chk.coefB       = p256_b;
-    chk.modulus     = p256_prime;
-    chk.pointX      = peer_sec1 + 1;
-    chk.pointY      = peer_sec1 + 33;
-    if (pka_pointcheck_timed(&hpka, &chk, 5000) != HAL_OK)
-        return -1;
-    if (HAL_PKA_PointCheck_IsOnCurve(&hpka) != 1u)
-        return -2;
-
-    if (scalar_mul(priv, peer_sec1 + 1, peer_sec1 + 33, shared_x, qy) != 0)
-        return -1;
-    /* The point at infinity would come back as all zeros and must not be used. */
-    if (is_zero(shared_x, 32) && is_zero(qy, 32))
+int crypto_x25519_ecdh(const uint8_t *priv, const uint8_t *peer_pub, uint8_t *shared) {
+    load_enter(LOAD_CURVE);
+    crypto_x25519(shared, priv, peer_pub);
+    load_exit();
+    /* The one check the curve still needs: a low-order point gives all zeros. */
+    if (is_zero(shared, 32))
         return -2;
     return 0;
 }
 
 int crypto_wire_kat(crypto_wire_result_t *r) {
-    PKA_ECCMulInTypeDef mul = {0};
-    PKA_PointCheckInTypeDef chk = {0};
-    PKA_ECCMulOutTypeDef out = {0};
-    uint8_t qx[32], qy[32];
     uint8_t key[16], tag[16], cipher[sizeof(V_PLAIN)];
+    uint8_t pub[X25519_PUB_LEN], z[32];
 
     memset(r, 0, sizeof(*r));
     uint32_t t0 = micros();
 
-    /* SEC1 0x04 || X || Y, validated before it is touched.
+    /* The hub's own published key, recomputed here from its scalar.
      * radio_devices_docs/wl55_device/security/self-tests.md */
-    chk.modulusSize = sizeof(p256_prime);
-    chk.coefSign    = 1;
-    chk.coefA       = p256_abs_a;
-    chk.coefB       = p256_b;
-    chk.modulus     = p256_prime;
-    chk.pointX      = &V_DEV_PUB[1];
-    chk.pointY      = &V_DEV_PUB[33];
-    if (V_DEV_PUB[0] != 0x04u)
-        return -1;
-    if (pka_pointcheck_timed(&hpka, &chk, 5000) != HAL_OK)
-        return -1;
-    r->point_valid = (HAL_PKA_PointCheck_IsOnCurve(&hpka) == 1u);
+    r->point_valid = (crypto_x25519_public_from_private(V_HUB_PRIV, pub) == 0) &&
+                     (memcmp(pub, V_HUB_PUB, sizeof(V_HUB_PUB)) == 0);
 
-    mul.scalarMulSize = sizeof(V_HUB_PRIV);
-    mul.modulusSize   = sizeof(p256_prime);
-    mul.coefSign      = 1;
-    mul.coefA         = p256_abs_a;
-    mul.modulus       = p256_prime;
-    mul.pointX        = &V_DEV_PUB[1];
-    mul.pointY        = &V_DEV_PUB[33];
-    mul.scalarMul     = V_HUB_PRIV;
-    if (pka_eccmul_timed(&hpka, &mul, 5000) != HAL_OK)
-        return -1;
-    out.ptX = qx;
-    out.ptY = qy;
-    HAL_PKA_ECCMul_GetResult(&hpka, &out);
-    /* SEC1 ECDH takes the X coordinate alone - not the point, not a hash. */
-    r->ecdh_ok = (memcmp(qx, V_ECDH_X, sizeof(V_ECDH_X)) == 0);
+    /* The hub's bytes, not my own arithmetic: agreeing with myself proves nothing.
+     * radio_devices_docs/wl55_device/security/self-tests.md */
+    r->ecdh_ok = (crypto_x25519_ecdh(V_HUB_PRIV, V_DEV_PUB, z) == 0) &&
+                 (memcmp(z, V_ECDH_SHARED, sizeof(V_ECDH_SHARED)) == 0);
 
-    hkdf_sha256(V_SALT, sizeof(V_SALT), V_ECDH_X, sizeof(V_ECDH_X),
+    /* And the other way round, which a one-sided implementation can still fail. */
+    r->ecdh_ok = r->ecdh_ok &&
+                 (crypto_x25519_ecdh(V_DEV_PRIV, V_HUB_PUB, z) == 0) &&
+                 (memcmp(z, V_ECDH_SHARED, sizeof(V_ECDH_SHARED)) == 0);
+
+    hkdf_sha256(V_SALT, sizeof(V_SALT), V_ECDH_SHARED, sizeof(V_ECDH_SHARED),
                 V_INFO_SESSION, sizeof(V_INFO_SESSION), key, sizeof(key));
     r->session_ok = (memcmp(key, V_KEY_SESSION0, sizeof(key)) == 0);
 
     uint8_t hop[16];
-    hkdf_sha256(V_SALT, sizeof(V_SALT), V_ECDH_X, sizeof(V_ECDH_X),
+    hkdf_sha256(V_SALT, sizeof(V_SALT), V_ECDH_SHARED, sizeof(V_ECDH_SHARED),
                 V_INFO_HOP, sizeof(V_INFO_HOP), hop, sizeof(hop));
     r->hop_ok = (memcmp(hop, V_KEY_HOP0, sizeof(hop)) == 0);
 
@@ -582,45 +371,10 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
                                       odd_pt, V_ODD_TAG) == 0) &&
                      (memcmp(odd_pt, V_ODD_PLAIN, sizeof(V_ODD_PLAIN)) == 0);
 
-    /* Measured: the hub needs the number to decide whether compressed points fit here.
+    /* Their low-order point, so both sides refuse the same bytes.
      * radio_devices_docs/wl55_device/security/self-tests.md */
-    uint8_t decomp[P256_PUB_LEN];
-    uint32_t td = micros();
-    int drc = crypto_p256_decompress(vec_p256_prefix, vec_p256_qx, decomp);
-    r->decompress_us = micros() - td;
-    r->decompress_ok = (drc == 0) &&
-                       (memcmp(decomp + 1, vec_p256_qx, 32) == 0) &&
-                       (memcmp(decomp + 33, vec_p256_qy, 32) == 0);
-    /* Flipping the parity bit must give the other root, not the same point. */
-    uint8_t other[P256_PUB_LEN];
-    r->decompress_parity_ok =
-        (crypto_p256_decompress((uint8_t)(vec_p256_prefix ^ 1u), vec_p256_qx, other) == 0) &&
-        (memcmp(other + 33, vec_p256_qy, 32) != 0);
-    /* A genuine non-residue: half of all field elements are valid x, so a flip passes.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    int bad_rc = crypto_p256_decompress(0x02u, vec_p256_x_no_root, other);
-    /* And an X that is not even a field element must go too. */
-    int oob_rc = crypto_p256_decompress(0x02u, p256_prime, other);
-    r->decompress_reject_ok = (bad_rc == -2) && (oob_rc == -2);
-
-    /* The hub's bytes, not my own arithmetic: agreeing with myself proves nothing.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    uint8_t shared_pub[P256_PUB_LEN];
-    r->shared_decomp_ok =
-        (crypto_p256_decompress(V_DEV_PUB_C[0], V_DEV_PUB_C + 1, shared_pub) == 0) &&
-        (memcmp(shared_pub + 1, V_DEV_PUB_X, 32) == 0) &&
-        (memcmp(shared_pub + 33, V_DEV_PUB_Y, 32) == 0);
-
-    /* ECDH on the decompressed point: a wrong Y cannot survive that, a Y compare can.
-     * radio_devices_docs/wl55_device/security/self-tests.md */
-    uint8_t x_from_c[32];
-    r->decomp_ecdh_ok =
-        (crypto_p256_ecdh(V_HUB_PRIV, shared_pub, x_from_c) == 0) &&
-        (memcmp(x_from_c, V_ECDH_X, sizeof(V_ECDH_X)) == 0);
-
-    /* Their non-residue, so both sides refuse the same bytes. */
-    r->shared_reject_ok =
-        (crypto_p256_decompress(V_REJECT_C[0], V_REJECT_C + 1, shared_pub) == -2);
+    uint8_t junk[32];
+    r->shared_reject_ok = (crypto_x25519_ecdh(V_HUB_PRIV, V_REJECT_U, junk) == -2);
 
     r->total_us = micros() - t0;
     r->digest = WIRE_VECTORS_DIGEST;
@@ -628,10 +382,10 @@ int crypto_wire_kat(crypto_wire_result_t *r) {
 }
 
 #include "exchange.h"
-#include "pair_v2.h"
+#include "pair_v4.h"
 #include "hop_vectors.h"
 
-/* pair_v2 on this silicon: the schedule, and the two sealed frames through CRYP.
+/* pair_v4 on this silicon: the schedule, and the two sealed frames through CRYP.
  * radio_devices_docs/wl55_device/security/self-tests.md */
 int crypto_pair_kat(crypto_pair_result_t *r) {
     uint8_t salt[EXCHANGE_SALT_LEN];
@@ -647,7 +401,7 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
     exchange_salt(0x33442211u, 0x0000002Au, PAIR_REQ_SUPERFRAME, PV_DEV_NONCE, salt);
     r->salt_ok = memcmp(salt, PV_SALT, sizeof(PV_SALT)) == 0;
     exchange_transcript(0x33442211u, 0x0000002Au, PAIR_REQ_SUPERFRAME, PV_DEV_NONCE,
-                        V_HUB_PUB_C, PV_HUB_EPH_PUB, V_DEV_PUB_C, transcript);
+                        V_HUB_PUB, PV_HUB_EPH_PUB, V_DEV_PUB, transcript);
     r->transcript_ok = memcmp(transcript, PV_TRANSCRIPT, sizeof(PV_TRANSCRIPT)) == 0;
 
     exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt, transcript, &k);
@@ -690,8 +444,8 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
         memcmp(ct, PV_FRAME_UPLINK + sizeof(PV_UPLINK_AAD), sizeof(ct)) == 0 &&
         memcmp(tag, PV_FRAME_UPLINK + sizeof(PV_UPLINK_AAD) + sizeof(ct), 16) == 0;
 
-    r->eph_static_rejected = exchange_eph_is_static(V_HUB_PUB_C, V_HUB_PUB_C) == 1 &&
-                             exchange_eph_is_static(PV_HUB_EPH_PUB, V_HUB_PUB_C) == 0;
+    r->eph_static_rejected = exchange_eph_is_static(V_HUB_PUB, V_HUB_PUB) == 1 &&
+                             exchange_eph_is_static(PV_HUB_EPH_PUB, V_HUB_PUB) == 0;
 
     /* Leave CRYP hostile, then open again: inherited settings do not fail.
      * radio_devices_docs/wl55_device/security/self-tests.md */

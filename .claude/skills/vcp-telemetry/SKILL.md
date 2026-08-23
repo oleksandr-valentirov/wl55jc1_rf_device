@@ -1,5 +1,5 @@
 ---
-name: telemetry
+name: vcp-telemetry
 description: The record format the boards emit on their own over the VCP, and how to read it - the sentinel line, the sequence-gap rule that makes loss visible, wrap stitching, and the traps that come from sharing one UART with a console. Use when adding an event, reading a stream, joining two boards' logs, or when a poll is about to be used to answer a question about when something happened.
 ---
 
@@ -32,9 +32,10 @@ signal to reach for this instead.
 ```
 
 `!` at column zero, one line, under 96 bytes, decimal everywhere. The device
-side is `Core/Src/telemetry.c`; the reader is `tools/telemetry.py`; the full
+side is `Core/Src/telemetry.c`, emitted from `Core/Src/device.c`; the reader is
+`tools/telemetry.py`; the full
 table lives in
-[`telemetry.md`](../../../radio_devices_docs/wl55_device/testing/telemetry.md).
+[`telemetry.md`](../../../../radio_devices_docs/wl55_device/testing/telemetry.md).
 
 Three rules, and they are the whole contract:
 
@@ -104,8 +105,9 @@ the prompt has this bug until it does the same.
 
 **Do not silence the device to make a tool work.** A tool that needs the port
 quiet cannot be used while the thing it is debugging is running, which is the
-only time it matters. `tlm off` is for a measurement that genuinely needs the
-console idle, and for nothing else.
+only time it matters. **There is no longer a way to silence it**: `tlm off` went
+with the writable console on 2026-08-22 and telemetry is unconditional in every
+build. A tool that could not cope with records arriving now has to cope.
 
 ## The cost, and where it must not land
 

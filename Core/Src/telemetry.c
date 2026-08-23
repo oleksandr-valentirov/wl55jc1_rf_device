@@ -40,6 +40,12 @@ static const tlm_kind_info_t kinds[TLM_KIND_COUNT] = {
     [TLM_RX_BEACON] = { "rx.beacon",{ "sf",  "win",   "fb"   }, 0u },
     /* Every field can differ from the compiled default; that is the point. */
     [TLM_TX_ARM]    = { "tx.arm",  { "sf",  "dbm",   "opp",  "every" }, 0x02u },
+    /* why: 0 drawn now, 1 restored from flash, 2 rng, 3 keygen, 4 flash. */
+    [TLM_IDENT]     = { "ident",   { "dev", "gen",   "held", "why"   }, 0u },
+    [TLM_JOIN_TRY]  = { "join.try",{ "n",   "rc",    "why",  "refused" }, 0u },
+    [TLM_JOIN_OK]   = { "join.ok", { "slot","every", "sf"            }, 0u },
+    /* The reservation, not a fault: sealing waits, syncing does not. */
+    [TLM_TX_HOLD]   = { "tx.hold", { "sf",  "why",   "floor"         }, 0u },
 };
 
 static tlm_rec_t ring[TLM_RING];

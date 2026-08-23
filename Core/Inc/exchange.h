@@ -5,7 +5,7 @@
 #include "radio_protocol.h"
 #include "sha256.h"
 
-/* The pair_v2 key schedule, from the spec text and free of crypto.h and the HAL.
+/* The pair_v4 key schedule, from the spec text and free of crypto.h and the HAL.
  * radio_devices_docs/wl55_device/security/self-tests.md */
 
 #define EXCHANGE_Z_TERM_LEN      32u

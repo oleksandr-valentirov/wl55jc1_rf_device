@@ -44,7 +44,7 @@ static void settle(superframe_t *sf, quiesce_t *q, uint32_t start) {
     memset(sf, 0, sizeof(*sf));
     memset(q, 0, sizeof(*q));
     host_clock_set(1000000u);
-    superframe_start(sf, start, SUPERFRAME_US, start);
+    superframe_start(sf, start, SUPERFRAME_US);
     uint8_t len = build(2u, start, 0u, 0u);
     beacon_apply(frame, len, sf, q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     host_clock_advance(SUPERFRAME_US);
@@ -174,7 +174,7 @@ static void test_first_beacon_quiesce(void) {
     memset(&sf, 0, sizeof(sf));
     memset(&q, 0, sizeof(q));
     host_clock_set(1000000u);
-    superframe_start(&sf, 0u, SUPERFRAME_US, 0u);
+    superframe_start(&sf, 0u, SUPERFRAME_US);
 
     announce(&sf, &q, 1000000u, 4u);
     CHECK(!q.active,
@@ -360,11 +360,36 @@ static void test_start_refuses_a_zero_period(void) {
 
     memset(&sf, 0, sizeof(sf));
     host_clock_set(1000000u);
-    superframe_start(&sf, 100u, 0u, 100u);
+    superframe_start(&sf, 100u, 0u);
     CHECK(sf.period_us != 0u, "superframe_start kept a zero period");
 }
 
+/* A key decides whether a device can join the grid; the counter mark does not.
+ * radio_devices_docs/wl55_device/radio/timebase.md */
+static void test_mark_ahead_does_not_block_sync(void) {
+    superframe_t sf;
+    quiesce_t q;
+    const uint32_t mark = 720721u;   /* what node B's flash actually held */
+    const uint32_t hub  = 720085u;   /* where the hub actually was */
+
+    memset(&sf, 0, sizeof(sf));
+    memset(&q, 0, sizeof(q));
+    host_clock_set(1000000u);
+    /* Seeded from the durable mark, which is the estimate a booted device has. */
+    superframe_start(&sf, mark, SUPERFRAME_US);
+
+    uint8_t len = build(2u, hub, 0u, 0u);
+    int rc = beacon_apply(frame, len, &sf, &q,
+                          micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
+    CHECK(rc == BEACON_OK, "a beacon below the durable mark was refused, rc %d", rc);
+    CHECK(sf.counter == hub, "counter %lu, want the hub's %lu",
+          (unsigned long)sf.counter, (unsigned long)hub);
+    CHECK(sf.state != SF_SYNC_STALE, "state is STALE after a legitimate beacon");
+    CHECK(sf.rejected == 0u, "%lu refusal(s) recorded", (unsigned long)sf.rejected);
+}
+
 int main(void) {
+    test_mark_ahead_does_not_block_sync();
     test_align_without_start();
     test_start_refuses_a_zero_period();
     test_gates();

@@ -26,6 +26,10 @@ typedef enum {
     TLM_RX_CMD,
     TLM_RX_BEACON,
     TLM_TX_ARM,
+    TLM_IDENT,
+    TLM_JOIN_TRY,
+    TLM_JOIN_OK,
+    TLM_TX_HOLD,
     TLM_KIND_COUNT
 } tlm_kind_t;
 
@@ -37,7 +41,8 @@ typedef enum {
 #define TLM_WHY_BAND      5u   /* the band filter held this cycle back */
 #define TLM_WHY_LATE      6u   /* the opportunity's slot had already passed */
 #define TLM_WHY_OFFBEAT   7u   /* the aligned counter is not a reporting one */
-#define TLM_WHY_RESERVE   8u   /* the counter is outside the reserved window */
+#define TLM_WHY_FLOOR     8u   /* at or below the floor the hub's downlink set */
+#define TLM_WHY_NODOWNLINK 9u  /* no downlink has opened since this boot */
 
 /* rx.cmd `rpt`: 0 applied, 1 a repeat of the one held, 2 a keepalive, 3 a replay. */
 

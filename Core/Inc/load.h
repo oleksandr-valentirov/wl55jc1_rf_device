@@ -6,7 +6,7 @@
  * radio_devices_docs/wl55_device/testing/console.md */
 typedef enum {
     LOAD_CRYPTO = 0,    /* AES and SHA - real computation, not recoverable */
-    LOAD_PKA,           /* P-256 - the accelerator runs, the core only waits */
+    LOAD_CURVE,         /* X25519 in software; the core does the work. ADR-0025 */
     LOAD_RADIO_WAIT,    /* polling the radio's IRQ line, recoverable */
     LOAD_RADIO_SPI,     /* SUBGHZSPI traffic, including the polling reads */
     LOAD_FLASH,         /* erase and program, which stall the core */

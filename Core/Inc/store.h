@@ -4,7 +4,7 @@
 
 #define STORE_PRIV_LEN 32
 #define STORE_KEY_LEN   16
-#define STORE_PUB_C_LEN 33   /* compressed SEC1 */
+#define STORE_PUB_C_LEN 32   /* X25519 u-coordinate - ADR-0025 */
 
 /* A mark ahead of the counter: persisting every superframe would wear the page.
  * radio_devices_docs/wl55_device/arch/store.md */
@@ -47,10 +47,10 @@ int  store_save_report_every(uint8_t report_every);
 /** @brief Persists the hub's static public key, provisioned out of band. */
 int  store_save_hub_static(const uint8_t *pub_c);
 
-/** @brief Reserves a counter block and returns the first value safe to use.
- *  radio_devices_docs/wl55_device/arch/store.md */
-int  store_reserve_counter(uint32_t counter_now, uint32_t *first_safe,
-                           uint32_t *mark_out);
+/** @brief Nonzero once a hub key has been learned; an unpaired device has none. */
+int  store_hub_static_set(const store_state_t *st);
+
+
 
 /** @brief Raises the durable receive floor; amortised to block boundaries. */
 int  store_note_received(uint32_t counter);

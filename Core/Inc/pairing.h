@@ -17,8 +17,8 @@
 #define PAIR_FRAME_LEN      ((uint16_t)sizeof(radio_pair_req_t))
 
 typedef struct {
-    uint8_t priv[P256_PRIV_LEN];
-    uint8_t pub[P256_PUB_LEN];
+    uint8_t priv[X25519_PRIV_LEN];
+    uint8_t pub[X25519_PUB_LEN];
     uint8_t have_key;
     uint8_t session[16];
     uint8_t hop[16];
@@ -42,7 +42,7 @@ uint8_t pairing_fingerprint(const pairing_ctx_t *ctx, uint8_t out[SHA256_LEN],
                             uint32_t out_len);
 /** @brief This device's public key in compressed form. */
 uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx,
-                         uint8_t out[P256_PUB_COMPRESSED_LEN],
+                         uint8_t out[X25519_PUB_LEN],
                          uint32_t out_len);
 
 /** @brief The one-frame bench exchange, NOT the protocol's pairing.

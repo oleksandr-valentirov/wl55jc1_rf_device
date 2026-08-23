@@ -13,17 +13,17 @@ typedef struct {
 
 typedef struct {
     uint8_t  point_ok;
-    uint8_t  valid_ok;
+    uint8_t  shared_ok;
     uint8_t  reject_ok;
     uint32_t mul_us;
-    uint32_t check_us;
-} crypto_p256_result_t;
+    uint32_t ecdh_us;
+} crypto_x25519_result_t;
 
 /** @brief Runs the AES-GCM known-answer test. */
 int crypto_gcm_kat(crypto_kat_result_t *r);
 
-/** @brief Runs the P-256 known-answer test. */
-int crypto_p256_kat(crypto_p256_result_t *r);
+/** @brief Runs the X25519 known-answer test against RFC 7748. */
+int crypto_x25519_kat(crypto_x25519_result_t *r);
 
 #define CRYPTO_GCM_MAX_AAD  16
 #define CRYPTO_GCM_MAX_LEN  64
@@ -46,25 +46,22 @@ int crypto_aes_ecb_block(const uint8_t *key16, const uint8_t in[16], uint8_t out
 int crypto_aes_ecb_datatype_probe(const uint8_t *key16, const uint8_t in[16],
                                   uint8_t out_8b[16], uint8_t out_32b[16]);
 
-#define P256_PRIV_LEN  32
-#define P256_PUB_LEN   65   /* SEC1 uncompressed: 0x04 || X || Y */
-
-#define P256_PUB_COMPRESSED_LEN 33   /* 0x02|0x03 || X */
+/* One width and one representation: RFC 7748 has no second form. ADR-0025 */
+#define X25519_PRIV_LEN  32
+#define X25519_PUB_LEN   32
 
 /** @brief A checked TRNG word; zeroes the output on failure, never leaks a stale one. */
 int crypto_rng_word(uint32_t *out);
 /** @brief 0 when the TRNG reports no seed or clock error; *sr is the raw status. */
 int crypto_rng_health(uint32_t *sr);
 
-/** @brief Generates a P-256 keypair in SEC1 uncompressed form. */
-int crypto_p256_keygen(uint8_t *priv, uint8_t *pub_sec1);
+/** @brief Draws a clamped X25519 keypair from the TRNG. */
+int crypto_x25519_keygen(uint8_t *priv, uint8_t *pub);
 
 /** @brief Recomputes the public key from a stored private one. */
-int crypto_p256_public_from_private(const uint8_t *priv, uint8_t *pub_sec1);
-/** @brief Recovers Y from X and a parity bit; -2 is a rejection, not a failure. */
-int crypto_p256_decompress(uint8_t prefix, const uint8_t *x, uint8_t *sec1_out);
-/** @brief ECDH; -2 rejects a peer point off the curve or at infinity. */
-int crypto_p256_ecdh(const uint8_t *priv, const uint8_t *peer_sec1, uint8_t *shared_x);
+int crypto_x25519_public_from_private(const uint8_t *priv, uint8_t *pub);
+/** @brief ECDH; -2 rejects the all-zero secret a low-order point produces. */
+int crypto_x25519_ecdh(const uint8_t *priv, const uint8_t *peer_pub, uint8_t *shared);
 
 typedef struct {
     uint8_t  point_valid;
@@ -78,12 +75,6 @@ typedef struct {
     uint8_t  forge_rejected;
     uint8_t  odd_seal_ok;
     uint8_t  odd_open_ok;
-    uint8_t  decompress_ok;
-    uint8_t  decompress_parity_ok;
-    uint8_t  decompress_reject_ok;
-    uint32_t decompress_us;
-    uint8_t  shared_decomp_ok;
-    uint8_t  decomp_ecdh_ok;
     uint8_t  shared_reject_ok;
     uint32_t total_us;
     const char *digest;

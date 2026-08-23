@@ -3,15 +3,13 @@
 #include "superframe.h"
 #include "timebase.h"
 
-void superframe_start(superframe_t *sf, uint32_t counter, uint32_t period_us,
-                      uint32_t floor) {
-    sf->counter = (int32_t)(counter - floor) < 0 ? floor : counter;
+void superframe_start(superframe_t *sf, uint32_t counter, uint32_t period_us) {
+    sf->counter = counter;
     /* A zero period never reaches its own next boundary.
      * radio_devices_docs/wl55_device/radio/timebase.md */
     sf->period_us = period_us ? period_us : SUPERFRAME_STUB_US;
     sf->next_boundary_us = micros() + period_us;
     sf->last_beacon_us = micros();
-    sf->floor = floor;
     sf->running = 1;
     sf->aligned = 0;
     sf->state = SF_SYNC_NONE;
@@ -43,16 +41,7 @@ int superframe_align(superframe_t *sf, uint32_t counter) {
 /* at_us is the first bit, not the end: the frame's own 8 ms would be permanent lag.
  * radio_devices_docs/wl55_device/radio/timebase.md */
 int superframe_align_at(superframe_t *sf, uint32_t counter, uint32_t at_us) {
-    /* Below the durable floor reuses a GCM nonce, which is worse than losing sync.
-     * radio_devices_docs/wl55_device/radio/timebase.md */
-    if ((int32_t)(counter - sf->floor) < 0) {
-        sf->state = SF_SYNC_STALE;
-        sf->rejected++;
-        sf->refused_counter = counter;
-        sf->refused_jump = (int32_t)(counter - sf->counter);
-        return -1;
-    }
-    /* Only once aligned: a booted device has no opinion and must take the first value.
+    /* A booted device takes the first value; the mark gates sealing, not this.
      * radio_devices_docs/wl55_device/radio/timebase.md */
     int32_t jump = (int32_t)(counter - sf->counter);
     /* Signed and symmetric: unsigned, one behind read as 4294967295 ahead.

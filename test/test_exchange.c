@@ -1,11 +1,11 @@
-/* pair_v2 from the hub tree, with the transcript rebuilt rather than sliced.
+/* pair_v4 from the hub tree, with the transcript rebuilt rather than sliced.
  * radio_devices_docs/wl55_device/testing/host-tests.md */
 #include <stdio.h>
 #include <string.h>
 
 #include "exchange.h"
-#include "pair_v2.h"
-#include "wire_v3.h"
+#include "pair_v4.h"
+#include "wire_v4.h"
 
 #define HUB_ID  0x33442211u
 #define DEV_ID  0x0000002Au
@@ -27,16 +27,16 @@ int main(void) {
     uint8_t transcript[EXCHANGE_TRANSCRIPT_LEN];
     exchange_keys_t k;
 
-    printf("pair_v2 %s   wire_v3 %s\n\n", PAIR_VECTORS_DIGEST, WIRE_VECTORS_DIGEST);
+    printf("pair_v4 %s   wire_v4 %s\n\n", PAIR_VECTORS_DIGEST, WIRE_VECTORS_DIGEST);
 
-    /* The two ids are literals here; wire_v3's salt is what pins them. */
+    /* The two ids are literals here; wire_v4's salt is what pins them. */
     uint8_t ids[8] = {
         (uint8_t)(HUB_ID >> 24), (uint8_t)(HUB_ID >> 16),
         (uint8_t)(HUB_ID >> 8),  (uint8_t)HUB_ID,
         (uint8_t)(DEV_ID >> 24), (uint8_t)(DEV_ID >> 16),
         (uint8_t)(DEV_ID >> 8),  (uint8_t)DEV_ID,
     };
-    eq("ids reproduce wire_v3 salt", ids, V_SALT, sizeof(V_SALT));
+    eq("ids reproduce wire_v4 salt", ids, V_SALT, sizeof(V_SALT));
 
     check("salt length matches the published salt",
           EXCHANGE_SALT_LEN == sizeof(PV_SALT));
@@ -47,7 +47,7 @@ int main(void) {
     eq("salt", salt, PV_SALT, sizeof(PV_SALT));
 
     exchange_transcript(HUB_ID, DEV_ID, PAIR_REQ_SUPERFRAME, PV_DEV_NONCE,
-                        V_HUB_PUB_C, PV_HUB_EPH_PUB, V_DEV_PUB_C, transcript);
+                        V_HUB_PUB, PV_HUB_EPH_PUB, V_DEV_PUB, transcript);
     eq("transcript", transcript, PV_TRANSCRIPT, sizeof(PV_TRANSCRIPT));
 
     /* Currently true and deliberately not relied on: exchange_salt builds its own bytes.
@@ -86,9 +86,9 @@ int main(void) {
 
     /* Named for what it detects. It says nothing about a replayed response. */
     check("eph-is-static detects the static key reused",
-          exchange_eph_is_static(V_HUB_PUB_C, V_HUB_PUB_C) == 1);
+          exchange_eph_is_static(V_HUB_PUB, V_HUB_PUB) == 1);
     check("eph-is-static passes a real ephemeral",
-          exchange_eph_is_static(PV_HUB_EPH_PUB, V_HUB_PUB_C) == 0);
+          exchange_eph_is_static(PV_HUB_EPH_PUB, V_HUB_PUB) == 0);
 
     uint8_t c[EXCHANGE_CONFIRM_LEN];
     memcpy(c, PV_CONFIRM_HUB, sizeof(c));

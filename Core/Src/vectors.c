@@ -7,12 +7,12 @@
 static const char *const local_hop_digest = HOP_VECTORS_DIGEST;
 #undef HOP_VECTORS_DIGEST
 #include "hop_v1.h"
-#include "pair_v2.h"
-#include "wire_v3.h"
+#include "pair_v4.h"
+#include "wire_v4.h"
 
 void vectors_report(vectors_report_t *out) {
-    out->pair_v2    = PAIR_VECTORS_DIGEST;
-    out->wire_v3    = WIRE_VECTORS_DIGEST;
+    out->pair_v4    = PAIR_VECTORS_DIGEST;
+    out->wire_v4    = WIRE_VECTORS_DIGEST;
     out->hop_shared = HOP_VECTORS_DIGEST;
     out->hop_local  = local_hop_digest;
 

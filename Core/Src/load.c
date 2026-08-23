@@ -20,7 +20,7 @@ static uint32_t     max_us[LOAD_CATEGORIES];
 static uint32_t     overflows;
 
 static const char *const names[LOAD_CATEGORIES] = {
-    "crypto", "pka", "radio-wait", "radio-spi", "flash", "console"
+    "crypto", "curve", "radio-wait", "radio-spi", "flash", "console"
 };
 
 void load_reset(void) {

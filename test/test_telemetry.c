@@ -76,14 +76,34 @@ static void test_format(void) {
     tlm_emit(TLM_RX_BEACON, 610664u, 71860u, 1u, 0u);
     eqline("!8 1506 rx.beacon sf=610664 win=71860 fb=1\r\n");
 
+    /* The three the node emits when nobody is typing: identity, and the
+     * invitation it answers. radio_devices_docs/wl55_device/radio/pairing.md */
+    host_clock_advance(1u);
+    tlm_emit(TLM_IDENT, 0xC4D444AAu, 0u, 1u, 0u);
+    eqline("!9 1507 ident dev=3302245546 gen=0 held=1 why=0\r\n");
+
+    host_clock_advance(1u);
+    tlm_emit(TLM_JOIN_TRY, 4u, 30u, 2u, 1u);
+    eqline("!10 1508 join.try n=4 rc=30 why=2 refused=1\r\n");
+
+    /* A NULL key ends the line here too: join.ok names three fields, not four. */
+    host_clock_advance(1u);
+    tlm_emit(TLM_JOIN_OK, 1u, 8u, 717360u, 99u);
+    eqline("!11 1509 join.ok slot=1 every=8 sf=717360\r\n");
+
+    /* The two shut gates, told apart: no downlink yet, and below the floor. */
+    host_clock_advance(1u);
+    tlm_emit(TLM_TX_HOLD, 720085u, TLM_WHY_NODOWNLINK, 0u, 0u);
+    eqline("!12 1510 tx.hold sf=720085 why=9 floor=0\r\n");
+
     host_clock_advance(1u);
     tlm_emit(TLM_RX_CMD, 618600u, 1u, 1u, 0u);
-    eqline("!9 1507 rx.cmd sf=618600 cmd=1 seq=1 rpt=0\r\n");
+    eqline("!13 1511 rx.cmd sf=618600 cmd=1 seq=1 rpt=0\r\n");
 
     /* Every `why` renders, so a new code cannot arrive as a bare number. */
     host_clock_advance(1u);
     tlm_emit(TLM_TX_DENY, 610672u, TLM_WHY_OFFBEAT, 0u, 0u);
-    eqline("!10 1508 tx.deny sf=610672 why=7\r\n");
+    eqline("!14 1512 tx.deny sf=610672 why=7\r\n");
 
     CHECK(tlm_next(NULL, 0) == 0, "a drained ring still produced a line");
 }

@@ -12,8 +12,7 @@ typedef enum {
     PAIR_INIT_BAD_FRAME,      /* type, version or length */
     PAIR_INIT_WRONG_NET,      /* net_id or hub_id is another network's */
     PAIR_INIT_NOT_ADDRESSED,  /* dev_id names a different device */
-    PAIR_INIT_NO_HUB_KEY,     /* Z1 needs the hub's static key; not provisioned */
-    PAIR_INIT_DERIVE_FAILED,
+    PAIR_INIT_BAD_MODE,       /* the frame's enrolment mode is not this device's */
     PAIR_INIT_BAD_MAC,
     PAIR_INIT_REPLAY,         /* superframe at or below the durable ceiling */
     PAIR_INIT_RATE_LIMITED
@@ -28,8 +27,7 @@ typedef struct {
     uint32_t bad_mac;
     uint32_t replay;
     uint32_t rate_limited;
-    uint32_t derive_failed;
-    uint32_t z1_derivations;  /* the 103 ms scalar multiply; must stay at 1 */
+    uint32_t bad_mode;
     uint32_t last_superframe; /* of the last accepted init */
     uint32_t ceiling;         /* what a replay is compared against */
 } pair_init_stats_t;
@@ -37,31 +35,17 @@ typedef struct {
 /* The device's own identity and the hub's static key, which together give Z1. */
 typedef struct {
     const uint8_t *dev_priv;      /* 32 bytes */
-    const uint8_t *hub_static_c;  /* 33 bytes, compressed SEC1 */
     uint32_t dev_id;
     uint32_t hub_id;
     uint16_t net_id;
+    uint8_t  enrol_mode;          /* fixed at provisioning, never from the frame */
 } pair_init_ctx_t;
 
 /** @brief Verifies an invitation; the order of the checks is the substance.
  *  radio_devices_docs/wl55_device/radio/pairing.md */
 pair_init_rc_t pair_init_verify(const pair_init_ctx_t *ctx, const uint8_t *frame,
                                 uint8_t len, uint32_t now_ms, uint32_t ceiling,
-                                uint32_t *superframe_out);
-
-/** @brief Derives K_init from the stored Z1; exposed so a vector can run it.
- *  radio_devices_docs/wl55_device/radio/pairing.md */
-int pair_init_key(const pair_init_ctx_t *ctx, uint8_t key_out[32]);
-/** @brief Derives K_init from a supplied Z1, so a vector runs the live code.
- *  radio_devices_docs/wl55_device/radio/pairing.md */
-void pair_init_key_from_z1(const uint8_t z1[32], uint32_t hub_id, uint32_t dev_id,
-                           uint8_t key_out[32]);
-/** @brief Test seam: seeds Z1 so a published frame takes the real verify path.
- *  radio_devices_docs/wl55_device/radio/pairing.md */
-void pair_init_test_seed_z1(const uint8_t z1[32]);
-/** @brief Derives Z1 once, ahead of the window that has to answer it.
- *  radio_devices_docs/wl55_device/radio/pairing.md */
-int pair_init_prepare(const pair_init_ctx_t *ctx);
+                                uint32_t *superframe_out, uint8_t *hub_static_out);
 
 /** @brief Counters for invitations; each refusal reason is separate. */
 void pair_init_stats(pair_init_stats_t *out);

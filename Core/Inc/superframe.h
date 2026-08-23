@@ -45,7 +45,6 @@ typedef struct {
     uint32_t period_us;
     uint32_t next_boundary_us;
     uint32_t last_beacon_us;
-    uint32_t floor;            /* never below what flash says has been used */
     uint8_t  running;
     uint8_t  aligned;
     sf_sync_t state;
@@ -62,13 +61,12 @@ typedef struct {
 } superframe_t;
 
 /** @brief Starts the clock; a zero period is substituted with the stub. */
-void     superframe_start(superframe_t *sf, uint32_t counter, uint32_t period_us,
-                          uint32_t floor);
+void     superframe_start(superframe_t *sf, uint32_t counter, uint32_t period_us);
 
 /** @brief Steps the counter to now and returns it. */
 uint32_t superframe_now(superframe_t *sf);
 
-/** @brief Aligns to a beacon; -1 is below the durable floor, -2 too far to believe. */
+/** @brief Aligns to a beacon; -2 is a jump too far to believe. */
 int      superframe_align(superframe_t *sf, uint32_t counter);
 
 /** @brief Aligns to a beacon that arrived at a known instant.

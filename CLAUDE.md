@@ -15,7 +15,10 @@ It talks to the hub in `../OpenHub`, which owns the other half of the same wire
 contract. **High band, 865–928 MHz**; the JC2 variant is 433–510 MHz and cannot
 be used here.
 
-No RTOS: `main()` initialises and then polls the console.
+No RTOS: `main()` initialises and then runs four services a pass — the console
+(read-only, and only where compiled in), the timebase, the node's own state
+machine, and the telemetry drain. **Nothing on this device waits to be told to
+start.**
 
 ## Conventions
 
@@ -110,11 +113,14 @@ ST-LINK firmware updates — while it is plugged in.
 Console by serial, never `/dev/ttyACM<n>`, whose numbering shifts on replug:
 
 ```bash
-tools/console.py /dev/serial/by-id/usb-STMicroelectronics_STLINK-V3_$A-if02 status
+tools/console.py /dev/serial/by-id/usb-STMicroelectronics_STLINK-V3_$A-if02 state
 ```
 
 It waits for the `>>> ` prompt rather than guessing a delay, so it can be
-scripted; with no command it dumps the port. **Both ends of a radio test belong
+scripted; with no command it dumps the port. **The console is read-only and
+optional** — `state`, `ident`, `radio`, `vectors`, `load` and nothing that
+changes what the node does; `-DWL55_CONSOLE=OFF` builds without it and the
+protocol is unchanged. The node runs from `Core/Src/device.c` on its own. **Both ends of a radio test belong
 in one shell invocation** — a listener and a transmitter fired from separate
 commands are separated by latency nobody measured, and this bench has spent two
 firmware changes on that
@@ -151,9 +157,15 @@ the hub repository has the headless recipe.
 ## Skills
 
 Deep knowledge lives in skills. Load the one that matches the task before
-starting. `telemetry` is this repository's, in `.claude/skills/`. `sdr`,
-`cubemx` and `verification` are shared and live in global storage,
-`~/.claude/skills/`, which no repository owns.
+starting. `vcp-telemetry` is this repository's, in `.claude/skills/`. `sdr`,
+`cubemx`, `verification`, `telemetry` and `regression` are shared and live in
+global storage, `~/.claude/skills/`, which no repository owns.
+
+**This repository's skill was called `telemetry` until 2026-08-22 and is now
+`vcp-telemetry`.** A local skill of the same name shadows the global one, so for
+as long as both were called `telemetry` this session could not load the hub's
+server-side skill at all — the two describe different instruments and the name
+was the only thing they shared.
 
 **An edit to a skill in global storage is a message to the other session, not a
 commit** — there is no repository to put it in, so whoever changes one tells the
@@ -164,9 +176,11 @@ repository.
 | Skill | Use when |
 |---|---|
 | `verification` | adding or reading a check, a self-test, a counter, a test vector or a probe; before quoting a measurement; whenever a first success is imminent |
+| `regression` | opening, conducting, aborting or grading a regression run — the protocol, not the checks |
 | `sdr` | a radio claim needs evidence from the air rather than from a counter |
 | `cubemx` | peripherals, pins, clocks or middleware change, or a change is about to be hand-written into a generated file |
-| `telemetry` | adding an event, reading a stream, joining two boards' logs, or a poll is about to answer a question about *when* something happened |
+| `vcp-telemetry` | adding an event, reading a stream, joining two boards' logs, or a poll is about to answer a question about *when* something happened |
+| `telemetry` | reading the same boards through `openhub-server` over REST or the websocket — the hub's view of this device, from the other end |
 
 A new way a green check turned out to be worthless goes in `verification`, not
 here. It is in global storage now, so **write the entry and tell the hub

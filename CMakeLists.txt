@@ -45,6 +45,10 @@ if(NOT EXISTS "${CUBE_FW_PATH}")
 endif()
 message(STATUS "Cube FW: ${CUBE_FW_PATH}")
 
+# Off is the product build; the protocol does not change either way.
+# radio_devices_docs/wl55_device/testing/console.md
+option(WL55_CONSOLE "compile the read-only console" ON)
+
 # The wire vectors are included from the hub's tree, never copied.
 # radio_devices_docs/wl55_device/testing/host-tests.md
 if(NOT DEFINED OPENHUB_PATH)
@@ -102,7 +106,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/timebase.c
     Core/Src/uptime.c
     Core/Src/telemetry.c
-    Core/Src/cli.c
+    Core/Src/device.c
+    Core/Src/console.c
+    Core/Src/vcp.c
     Core/Src/radio.c
     Core/Src/crypto.c
     Core/Src/sha256.c
@@ -117,14 +123,21 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/hop.c
     Core/Src/load.c
     Core/Src/pair_init.c
+    third_party/monocypher/monocypher.c
     # The RF switch is BSP territory: the .ioc pulls in the nucleo half only.
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c
 )
+
+# -O0 costs this file 371 ms a scalar multiplication against the PKA's 103 ms.
+# radio_devices_docs/radio/decisions/0025-x25519-replaces-p256.md
+set_source_files_properties(third_party/monocypher/monocypher.c
+    PROPERTIES COMPILE_OPTIONS "-O2")
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Core/Inc
+    third_party/monocypher
     ${WIRE_VECTORS}
     ${SHARED_PROTOCOL}
 )
@@ -132,6 +145,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    WL55_CONSOLE=$<BOOL:${WL55_CONSOLE}>
 )
 
 # Remove wrong libob.a library dependency when using cpp files

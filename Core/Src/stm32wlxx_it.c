@@ -22,7 +22,7 @@
 #include "stm32wlxx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "cli.h"
+#include "console.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -263,6 +263,6 @@ void LPUART1_IRQHandler(void)
   if (__HAL_UART_GET_FLAG(h, UART_FLAG_ORE))
     __HAL_UART_CLEAR_OREFLAG(h);
   if (__HAL_UART_GET_FLAG(h, UART_FLAG_RXNE))
-    CLI_RxByte((uint8_t)(h->Instance->RDR & 0xFFU));
+    console_rx_byte((uint8_t)(h->Instance->RDR & 0xFFU));
 }
 /* USER CODE END 1 */

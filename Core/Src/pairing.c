@@ -7,7 +7,7 @@
 
 /* The sum it must equal, against the contract's literal rather than against sizeof.
  * radio_devices_docs/wl55_device/radio/pairing.md */
-_Static_assert(sizeof(radio_pair_req_t) == 57u, "PAIR_REQ must stay 57 bytes");
+_Static_assert(sizeof(radio_pair_req_t) == 56u, "PAIR_REQ must stay 56 bytes");
 #include "radio.h"
 #include "sha256.h"
 
@@ -16,10 +16,6 @@ static const uint8_t info_hop[]     = "openhub/v1/hop";
 
 /* One place: the fingerprint and the transmitted key must hash the same bytes.
  * radio_devices_docs/wl55_device/radio/pairing.md */
-static void compress_pub(const uint8_t *sec1_65, uint8_t *out33) {
-    out33[0] = (uint8_t)(0x02u | (sec1_65[P256_PUB_LEN - 1] & 1u));
-    memcpy(out33 + 1, sec1_65 + 1, P256_PUB_COMPRESSED_LEN - 1u);
-}
 
 int pairing_new_nonce(pairing_ctx_t *ctx) {
     memset(ctx->dev_nonce, 0, sizeof(ctx->dev_nonce));
@@ -45,7 +41,7 @@ static int nonce_is_zero(const pairing_ctx_t *ctx) {
 }
 
 int pairing_keygen(pairing_ctx_t *ctx) {
-    if (crypto_p256_keygen(ctx->priv, ctx->pub) != 0)
+    if (crypto_x25519_keygen(ctx->priv, ctx->pub) != 0)
         return -1;
     ctx->have_key = 1;
     return 0;
@@ -53,22 +49,21 @@ int pairing_keygen(pairing_ctx_t *ctx) {
 
 /* The compressed point, so the fingerprint and the wire name the same bytes.
  * radio_devices_docs/wl55_device/radio/pairing.md */
-uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx, uint8_t out[P256_PUB_COMPRESSED_LEN],
+uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx, uint8_t out[X25519_PUB_LEN],
                          uint32_t out_len) {
-    if (!ctx->have_key || out_len < P256_PUB_COMPRESSED_LEN)
+    if (!ctx->have_key || out_len < X25519_PUB_LEN)
         return 0;
-    compress_pub(ctx->pub, out);
-    return P256_PUB_COMPRESSED_LEN;
+    memcpy(out, ctx->pub, X25519_PUB_LEN);
+    return X25519_PUB_LEN;
 }
 
 uint8_t pairing_fingerprint(const pairing_ctx_t *ctx, uint8_t out[SHA256_LEN],
                             uint32_t out_len) {
-    uint8_t compressed[P256_PUB_COMPRESSED_LEN];
+    const uint8_t *compressed = ctx->pub;
     /* Bounded twice: the array parameter catches a short array, out_len a bare pointer.
      * radio_devices_docs/wl55_device/radio/pairing.md */
     if (!ctx->have_key || out_len < SHA256_LEN)
         return 0;
-    compress_pub(ctx->pub, compressed);
     sha256(compressed, sizeof(compressed), out);
     return SHA256_LEN;
 }
@@ -89,11 +84,11 @@ static void build_pair_frame(const pairing_ctx_t *ctx, uint8_t type, uint8_t *ou
     f.dev_id     = ctx->dev_id;
     f.superframe = ctx->superframe;
     memcpy(f.dev_nonce, ctx->dev_nonce, sizeof(f.dev_nonce));
-    compress_pub(ctx->pub, f.pubkey);
+    memcpy(f.pubkey, ctx->pub, sizeof(f.pubkey));
     memcpy(out, &f, sizeof(f));
 }
 
-/* The SINGLE-TERM derivation from wire_v3, named for the construction not the job.
+/* The SINGLE-TERM derivation from wire_v4, named for the construction not the job.
  * radio_devices_docs/wl55_device/radio/pairing.md */
 static void derive_single_term_v1(pairing_ctx_t *ctx, const uint8_t *shared_x) {
     uint8_t salt[8];
@@ -163,15 +158,11 @@ static int exchange(pairing_ctx_t *ctx, uint8_t send_type, uint8_t expect_type,
             return -1;
     }
 
-    uint8_t peer_pub[P256_PUB_LEN];
+
     /* Offsets from the shared struct, so a new field moves both ends together.
      * radio_devices_docs/wl55_device/radio/pairing.md */
-    if (crypto_p256_decompress(rx[offsetof(radio_pair_req_t, pubkey)],
-                               rx + offsetof(radio_pair_req_t, pubkey) + 1u,
-                               peer_pub) != 0)
-        return -5;
-
-    int rc = crypto_p256_ecdh(ctx->priv, peer_pub, shared_x);
+    int rc = crypto_x25519_ecdh(ctx->priv,
+                                rx + offsetof(radio_pair_req_t, pubkey), shared_x);
     if (rc != 0)
         return (rc == -2) ? -5 : -1;
 

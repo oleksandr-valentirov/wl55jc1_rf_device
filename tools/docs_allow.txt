@@ -20,3 +20,13 @@ wl55_device/radio/driver.md:radio_air_time_us  # the general verb, named as what
 wl55_device/radio/timebase.md:RADIO_FRAME_AIR_US  # named as a pre-rename name
 wl55_device/radio/timebase.md:RADIO_POST_SYNC_AIR_US  # likewise
 wl55_device/radio/timebase.md:RADIO_HUB_TX_DELAY_US  # named to say it does not exist yet
+wl55_device/radio/driver.md:cmd_downlink  # the console command whose defect this records; removed 2026-08-22
+wl55_device/radio/timebase.md:gap_plausible  # named as the screen that went with the console
+wl55_device/radio/timebase.md:report_armed  # named as the RAM flag that no longer exists
+wl55_device/testing/host-tests.md:link_v4  # a superseded vector set, named as superseded
+wl55_device/radio/timebase.md:tx_gate  # named as the path removed with the console
+wl55_device/radio/timebase.md:reserve_extend  # the 2026-08-21 account; removed by ADR-0023
+wl55_device/security/replay.md:reserve_extend  # named as what used to sit in that gap
+wl55_device/radio/pairing.md:reserve_extend  # the boundary table's historical row; removed by ADR-0023
+wl55_device/radio/timebase.md:reserve_covers  # named in the 2026-08-21 analysis it belonged to
+wl55_device/arch/README.md:store_reserve_counter  # named as the scheme ADR-0023 removed

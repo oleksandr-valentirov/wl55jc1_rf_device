@@ -78,7 +78,7 @@ The gap between recoveries is the visible remainder: recovery only starts after
 `RECOVER_LOST_US`, so with the reporting loop disarmed the device idles, goes
 stale, and waits 30 s to notice. Camping is what closes that, not more recovery.
 
-`Core/Src/main.c:149`, `Core/Src/cli.c` → `recover_service`, `report_service`,
+`Core/Src/main.c:149`, `Core/Src/device.c` → `recover_service`, `report_service`,
 `radio_devices_docs/wl55_device/radio/pairing.md`.
 
 ### 4. The grid cannot meet the 1 s event deadline — `blocking` `contract`
@@ -169,6 +169,65 @@ moment (`verification` skill).
 ---
 
 ## Defects
+
+### 55. A device with no hub static key can never obtain one — `blocking` `defect`
+
+**Fixed and verified on air 2026-08-23, pending a flash to node B.** `PAIR_INIT`
+carries `hub_static` under ADR-0024 and `join.c` calls `store_save_hub_static()`
+from the pairing path. Verified end to end on node A with **only `device add
+<id>` typed on the hub**: a node whose store had been erased took the hub's key
+out of the invitation, answered, confirmed and paired. `test_no_hub_key_still_listens`
+in `test/test_invite.c` fails if the refusal returns. The hot loop is gone with
+it — `invite_service()` now paces on `INVITE_SLICE_MS` rather than re-entering a
+free refusal.
+
+`store_save_hub_static()` has **no caller**. The only one was the console command
+deleted by the autonomy refactor (`cli.c:1723` at 6e94b41, `hub static key set
+and persisted`), and nothing replaced it.
+
+`join_run_ex()` refuses at its first line when the store holds no hub static key
+and returns -20 **before it listens for anything**, so the device cannot learn the
+key from the join beacon that would carry it. A mass-erased device is therefore
+unpairable by any route that exists in the firmware.
+
+Found by regression run 2026-08-23-1 (RG-A-1, REQ-F-1, REQ-F-3, REQ-F-12) after
+both bench nodes were formatted: 60 s of capture carried 30 hub beacons and 15
+downlinks and **zero uplinks**, while both nodes emitted `join.try rc=20` and
+nothing else. The two boards had held provisioned keys since before the
+refactor, which is why nothing caught it.
+
+**The refusal is also a hot loop.** The -20 path costs nothing, so
+`invite_service()` re-enters it every superloop pass: measured **~139
+`join.try` records per second**, about one per 7 ms, where `INVITE_SLICE_MS` was
+meant to pace it. A device that cannot pair should idle, not spin.
+
+`radio_devices_docs/wl55_device/radio/pairing.md`.
+
+### 56. An identity restored from flash has no public key — `blocking` `defect`
+
+**Fixed, pending a flash to node B.** `provision_identity()` calls
+`crypto_x25519_public_from_private()` on the restore path.
+
+`provision_identity()` copies the private key out of the store, sets
+`have_key = 1` and **never derives the public point**. `pair_ctx.pub` is written
+in exactly one place, the fresh-draw path, so on every boot that restores an
+identity it stays zeroed.
+
+The firmware this replaced did it correctly: `pair_load_identity()` called
+`crypto_p256_public_from_private()` on the restore path (`cli.c:1196` at
+6e94b41). The autonomy refactor dropped that line.
+
+Observed on node A in regression run 2026-08-23-1 (RG-T-1, REQ-F-7): first boot
+after erase drew `7C9B7DAF` with pubkey `02644DA3..`, and after a reset the same
+id came back with pubkey `020000000000..` — 32 zero bytes.
+
+Two consequences, and the second is worse than the first: `ident` invites the
+operator to enrol a zero key, and the pairing exchange would put that zero point
+on the wire, so **a device that has ever rebooted cannot pair even once item 55
+is fixed**.
+
+`radio_devices_docs/wl55_device/arch/store.md`.
+
 
 ### 6. Neither uplink path gates on the reserved counter window — `defect`
 
@@ -272,7 +331,7 @@ is unresponsive across the beacon window and the slot, and the widened window of
 a stale cycle makes that longer. Harmless while the device does one thing;
 the blocker for item 1, which needs the same loop to do several.
 
-`Core/Src/cli.c` → `report_service`.
+`Core/Src/device.c` → `report_service`.
 
 ### 21. `frame.c`'s replay rule guards a loopback, not the production path — `debt`
 
@@ -360,7 +419,7 @@ sentence. `test/test_hop.c` now carries **"hop_v1 still describes the live deck"
 suite instead of leaving a fixture quietly validating a cycle nothing transmits
 on. Verified non-vacuous by setting the fixture to 27 and watching it fail.
 
-`Core/Src/cli.c` → `hop_init_live`. `radio_devices_docs/radio/hopping.md`.
+`Core/Src/device.c` → `hop_init_live`. `radio_devices_docs/radio/hopping.md`.
 
 ### 42. The hop channel was computed from the guess and never recomputed — `closed 2026-08-22`
 
@@ -403,7 +462,7 @@ reading may come from A rather than from a deliberate test.
 Found 2026-08-22 while answering the hub's channel-disagreement question, which
 this side's data excludes as a cause.
 
-`Core/Src/cli.c` → `report_service`. `radio_devices_docs/radio/hopping.md`.
+`Core/Src/device.c` → `report_service`. `radio_devices_docs/radio/hopping.md`.
 
 ### 34. Front-end overload confirmed, and it does not close item 4 — `hub`
 
@@ -867,7 +926,7 @@ of them. A pre-registration that plans power in frames plans it in the wrong
 unit; the next attempt needs delivery, not time, and the power calculation has to
 be done on the corrected statistic before the window opens rather than after.
 
-`Core/Src/superframe.c`, `Core/Src/cli.c` → `hub_us_to_local`.
+`Core/Src/superframe.c`, `Core/Src/device.c` → `hub_us_to_local`.
 `radio_devices_docs/wl55_device/radio/timebase.md`.
 
 ### 32. The RX filter is short of the budget and loses nothing — `debt`
@@ -940,7 +999,7 @@ downlink always carries the **base** slot. A one-line predicate on both sides,
 and picking differently reads as a tag failure rather than as an addressing
 disagreement.
 
-`Core/Src/cli.c` → `downlink_open`.
+`Core/Src/device.c` → `downlink_open`.
 
 **The `dl_served` guard is load-bearing for the crypto, not only for the
 schedule.** The downlink nonce is `(superframe, dev_id, direction, slot)`, and
@@ -999,7 +1058,7 @@ push a far device's delivery down for reasons that are not distance, which is th
 comparison the experiment exists to make. **Two devices being compared must hold
 the same grant**, and the grant is the hub's to set.
 
-`Core/Inc/superframe.h` → `SUPERFRAME_FRESH_US`, `Core/Src/cli.c` →
+`Core/Inc/superframe.h` → `SUPERFRAME_FRESH_US`, `Core/Src/device.c` →
 `report_service`, `radio_devices_docs/wl55_device/testing/telemetry.md`.
 
 ### 28. Recovery's predicted tier is unusable cold, not useless — `debt`
@@ -1027,7 +1086,7 @@ trusted, not by whether a measurement was ever taken.
 Only visible because the records are timestamped; a counter shows the same
 "seven windows, zero hits" either way.
 
-`Core/Src/cli.c` → `recover_service`, `recover_search`,
+`Core/Src/device.c` → `recover_service`, `recover_search`,
 `radio_devices_docs/wl55_device/testing/telemetry.md`.
 
 ### 26. The loop's slot residual cannot see an alignment error — `defect`
@@ -1072,7 +1131,7 @@ The cause is not the grant: B was moved to A's cadence and its period estimate
 did not move. What is left is level, A being 30 dB down, which would make
 distance damage the clock and not only the SNR.
 
-`Core/Src/cli.c` → `report_service`, `Core/Src/radio.c:559`.
+`Core/Src/device.c` → `report_service`, `Core/Src/radio.c:559`.
 
 
 ---
@@ -1123,7 +1182,7 @@ the hub is what item 34 predicts trouble for, and none of this was measurable
 yesterday because the number was a literal zero. It is a lead and not a
 conclusion: nothing here shows the level caused the loss.
 
-`Core/Src/cli.c` → `beacon_rssi_note`, `report_service`, `recover_take`.
+`Core/Src/device.c` → `beacon_rssi_note`, `report_service`, `recover_take`.
 `radio_devices_docs/radio/tdma.md`.
 
 
@@ -1229,7 +1288,7 @@ other.** Theirs is `RegLna` sitting at its reset value, which is a configured
 state and not an unconfigured one; mine is `tx_dbm` sitting at its compiled
 maximum. Neither was visible from the side that owned it.
 
-`Core/Src/radio.c` → `radio_set_power`, `radio_power_dbm`, `Core/Src/cli.c`.
+`Core/Src/radio.c` → `radio_set_power`, `radio_power_dbm`, `Core/Src/device.c`.
 `verification` skill § windows, brackets and the arming.
 
 ### 48. The firmware cannot say which build it is — `closed 2026-08-22`
@@ -1274,7 +1333,7 @@ clear because the tree was committed before the build. The question "what is on
 this board" is now answered by the board.
 
 `cmake/build_id.cmake`, `CMakeLists.txt`, `Core/Src/telemetry.c`,
-`Core/Src/cli.c` → `cmd_status`.
+`Core/Src/console.c` → `show_state`, which replaced `cmd_status`.
 `radio_devices_docs/wl55_device/testing/telemetry.md`.
 
 
@@ -1486,3 +1545,38 @@ measurement taken while `report` is armed is on the protocol carrier and sync
 word under the bench's name.
 
 `radio_devices_docs/wl55_device/radio/driver.md`.
+
+### 57. The console is starved while the enrolment window is open — `debt`
+
+`invite_service()` holds a receive slice, and the console is not serviced inside
+it. Measured on node A 2026-08-23: a command written to the VCP answers in more
+than 2.5 s and less than 5 s while the node is unpaired and listening, against
+well under 1 s once paired.
+
+Nothing is wrong with the pacing. What is wrong is that **a read that times out
+is indistinguishable from a dead board**, and the board goes on emitting its
+telemetry beat the whole time, so the one instrument that says "alive" is the one
+a console read does not use. It produced twelve false negatives in one session:
+two harnesses reported zero pairing attempts by a node that was listening
+correctly.
+
+`radio_devices_docs/wl55_device/testing/bench-harness.md`.
+
+### 58. A paired device cannot be released without a debug probe — `blocking`
+
+The grant lives in flash and `device_init()` restores it before anything else, so
+a paired node ignores invitations for the rest of its life. `device remove` on the
+hub clears only the hub's half. **There is no operator-facing route to the other
+half**: the console is read-only under RG-T-2, so releasing a device today needs
+`STM32_Programmer_CLI -e 126 127` on the board.
+
+A sensor therefore cannot be moved to a replacement hub, which the product
+requirement of 2026-08-23 assumes it can. ADR-0024 asserted a power cycle was
+enough; it is not, and that claim is corrected in the record.
+
+Erasing the store also drops the identity, so the unit returns with a **new
+device id** and its printed label is wrong. Whatever the release mechanism turns
+out to be, it has to keep the identity and drop only the pairing — they are in
+one store today.
+
+`radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.

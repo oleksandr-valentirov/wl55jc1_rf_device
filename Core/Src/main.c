@@ -22,7 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "load.h"
-#include "cli.h"
+#include "console.h"
+#include "device.h"
 #include "radio.h"
 #include "timebase.h"
 /* USER CODE END Includes */
@@ -143,7 +144,8 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   /* After the generated BSP_COM_Init above, which re-initialises the same UART. */
-  CLI_Init();
+  device_init();
+  console_init();
   extern volatile uint32_t loop_mark;
   extern volatile uint32_t loop_beat;
   while (1)
@@ -153,13 +155,11 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     loop_mark = 0x11u;
-    CLI_Poll();
+    console_poll();
     loop_mark = 0x12u;
     timebase_service();
     loop_mark = 0x13u;
-    recover_service();
-    loop_mark = 0x14u;
-    report_service();
+    device_service();
     loop_mark = 0x15u;
     telemetry_service();
     loop_beat++;

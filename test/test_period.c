@@ -36,7 +36,7 @@ static long run(uint32_t seed, uint32_t beacons, uint32_t *n_est) {
     long worst = 0;
 
     host_clock_set(at);
-    superframe_start(&sf, 0u, SUPERFRAME_US, 0u);
+    superframe_start(&sf, 0u, SUPERFRAME_US);
     *n_est = 0;
     for (uint32_t i = 1; i <= beacons; i++) {
         uint32_t jitter = lcg(&seed) % (2u * JITTER_US + 1u);
@@ -70,7 +70,7 @@ int main(void) {
         uint32_t settled = 0;
 
         host_clock_set(at);
-        superframe_start(&sf, 0u, SUPERFRAME_US, 0u);
+        superframe_start(&sf, 0u, SUPERFRAME_US);
         for (uint32_t i = 1; i <= 600u; i++) {
             uint32_t jitter = lcg(&s) % (2u * JITTER_US + 1u);
             at += TRUE_PER;
