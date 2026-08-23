@@ -76,6 +76,18 @@ Three things this entry still owns:
   `DEVICE_ENROL_WINDOW_MS` is 600 000, so the node stops listening ten minutes
   after power-up ([ADR-0024](../radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md)).
   It has to be stated wherever *listens unattended* is claimed.
+
+  **Measured 2026-08-24, because it had been mistaken for a growing back-off.**
+  There is no back-off: `INVITE_SLICE_MS` is 8500 and `INVITE_RETRY_GAP_MS` is
+  2000, so a slice every 8.5 s until the window shuts and none after. Node B at
+  34 872 s of uptime held `listening slices 71`; 71 x 8.5 s is 603 s against a
+  window of 600. Averaged over the whole uptime that is one slice per 491 s,
+  which is what the wrong reading was made of.
+
+  The bound stays; **saying nothing about it was the defect** and is fixed.
+  `state` now prints the seconds left or `WINDOW SHUT`, and the close emits one
+  record. What is still owed is the length being a policy number rather than a
+  compile-time constant, and the reopen route on a console-less unit — item 58.
 - **Camping is still missing between recoveries.** Recovery starts only after
   `RECOVER_LOST_US`, so a device that has lost the beacon idles, goes stale and
   waits 30 s to notice. More recovery does not close that; camping does.

@@ -105,6 +105,13 @@ static void show_state(void) {
     out("invites seen %lu  refused %lu  (listening slices %lu)\r\n",
         (unsigned long)v.invites_seen, (unsigned long)v.invites_refused,
         (unsigned long)v.invite_slices);
+    /* A slice count alone cannot say whether the node is still looking. ADR-0024 */
+    if (v.paired)
+        out("enrol   not listening - paired\r\n");
+    else if (v.enrol_open)
+        out("enrol   listening, window shuts in %lu s\r\n", (unsigned long)v.enrol_left_s);
+    else
+        out("enrol   WINDOW SHUT - power-cycle or `release` to reopen it\r\n");
 }
 
 /* The one console command that writes.

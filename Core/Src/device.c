@@ -860,6 +860,8 @@ static uint32_t invite_last_ms;
 /* Boot is only the first physical act; a release is another.
  * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
 static uint32_t enrol_window_from_s;
+/* The close is announced once; a reopen has to be able to announce it again. */
+static uint8_t  enrol_shut_said;
 
 /** @brief Listens one slice for an invitation; runs only while unpaired. */
 static void invite_service(void) {
@@ -867,8 +869,14 @@ static void invite_service(void) {
     store_state_t st;
     uint32_t now = millis_hw();
 
-    if ((timebase_uptime_s() - enrol_window_from_s) * 1000u > DEVICE_ENROL_WINDOW_MS)
+    if ((timebase_uptime_s() - enrol_window_from_s) * 1000u > DEVICE_ENROL_WINDOW_MS) {
+        /* Said once, so the console's "listening" and the record agree. ADR-0024 */
+        if (!enrol_shut_said) {
+            enrol_shut_said = 1;
+            tlm_emit(TLM_JOIN_TRY, invite_slices, 0u, 0u, 2u);
+        }
         return;
+    }
     if (invite_last_ms != 0u && (uint32_t)(now - invite_last_ms) < INVITE_RETRY_GAP_MS)
         return;
     invite_last_ms = now;
@@ -904,6 +912,7 @@ int device_release_pairing(void) {
     /* The RAM copy too, or it stays paired until the reset this replaces. */
     memset(&join_res, 0, sizeof(join_res));
     enrol_window_from_s = timebase_uptime_s();
+    enrol_shut_said = 0;
     invite_last_ms = 0;
     return 0;
 }
@@ -952,6 +961,15 @@ void device_snapshot(device_view_t *v) {
 
         pair_init_stats(&ps);
         v->invites_seen = ps.seen;
+    }
+    {
+        /* A counter that stopped moving reads as "still looking" otherwise.
+         * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
+        uint32_t open_s = timebase_uptime_s() - enrol_window_from_s;
+        uint32_t win_s  = DEVICE_ENROL_WINDOW_MS / 1000u;
+
+        v->enrol_open   = (uint8_t)((open_s < win_s) ? 1u : 0u);
+        v->enrol_left_s = v->enrol_open ? (win_s - open_s) : 0u;
     }
     v->invite_slices   = invite_slices;
     v->invites_refused = invites_refused;

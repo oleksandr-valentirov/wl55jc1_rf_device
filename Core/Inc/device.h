@@ -47,6 +47,8 @@ typedef struct device_view {
     uint32_t tx_floor;          /**< superframe of the first downlink opened this boot */
     uint8_t  tx_floor_known;    /**< nothing may be sealed until one has */
     uint32_t invite_slices;     /**< times the node looked, never a denominator */
+    uint32_t enrol_left_s;      /**< seconds the enrolment window has left, 0 when shut */
+    uint8_t  enrol_open;        /**< whether the node would answer an invitation now */
     uint32_t invites_seen;      /**< frames that parsed as a PAIR_INIT at all */
     uint32_t invites_refused;
     uint32_t reports_sent;
