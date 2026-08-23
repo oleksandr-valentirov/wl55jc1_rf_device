@@ -47,7 +47,7 @@ int pairing_keygen(pairing_ctx_t *ctx) {
     return 0;
 }
 
-/* The compressed point, so the fingerprint and the wire name the same bytes.
+/* The u-coordinate, so the fingerprint and the wire name the same bytes.
  * radio_devices_docs/wl55_device/radio/pairing.md */
 uint8_t pairing_pubkey_c(const pairing_ctx_t *ctx, uint8_t out[X25519_PUB_LEN],
                          uint32_t out_len) {

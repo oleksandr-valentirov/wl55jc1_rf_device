@@ -61,7 +61,7 @@ void device_snapshot(device_view_t *v);
 
 /**
  * @brief The node's public key, for the operator who has to enrol it on a hub.
- * @param pub    X25519_PUB_LEN bytes, the compressed point
+ * @param pub    X25519_PUB_LEN bytes, the u-coordinate
  * @retval 0     written
  * @retval -1    no identity in flash
  */

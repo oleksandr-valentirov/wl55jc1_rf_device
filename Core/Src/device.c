@@ -24,7 +24,6 @@
 #include "radio_protocol.h"
 #include "radio_slots.h"
 #include "radio_phy.h"
-#include "pair_v3.h"   /* the published PAIR_INIT */
 #include "pair_init.h"
 #include "beacon.h"
 #include "wire_v4.h"
