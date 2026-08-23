@@ -56,6 +56,11 @@ pair_init_rc_t pair_init_verify(const pair_init_ctx_t *ctx, const uint8_t *frame
      * radio_devices_docs/wl55_device/radio/pairing.md */
     if (ctx->hub_id != 0u && (net != ctx->net_id || hub != ctx->hub_id)) {
         stats.wrong_net++;
+        /* Both sides, or the console cannot say which hub it was. */
+        stats.wrong_net_hub      = hub;
+        stats.wrong_net_net      = net;
+        stats.wrong_net_want     = ctx->hub_id;
+        stats.wrong_net_want_net = ctx->net_id;
         return PAIR_INIT_WRONG_NET;
     }
     /* Before any key work: an invitation to another device must cost this one nothing.

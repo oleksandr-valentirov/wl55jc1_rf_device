@@ -382,7 +382,7 @@ static uint8_t  arm_opp, arm_every;
 static uint8_t  report_band;
 static uint32_t report_attempt_sf;
 static uint32_t reports_sent, beacons_missed;
-static uint32_t invites_heard, invites_refused;
+static uint32_t invite_slices, invites_refused;
 
 /* Coming back after the counter is gone.
  * radio_devices_docs/radio/joining.md */
@@ -841,13 +841,13 @@ static void provision_identity(void) {
     tlm_emit(TLM_IDENT, id, 0u, 0u, 0u);
 }
 
-/* Bounded by a physical act: an attacker must be there minutes after power-up.
- * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
-#define DEVICE_ENROL_WINDOW_MS  600000u
 /* An unpairable device idles rather than spinning; the old path burned 139/s. */
 #define INVITE_RETRY_GAP_MS     2000u
 
 static uint32_t invite_last_ms;
+/* Boot is only the first physical act; a release is another.
+ * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
+static uint32_t enrol_window_from_s;
 
 /** @brief Listens one slice for an invitation; runs only while unpaired. */
 static void invite_service(void) {
@@ -855,7 +855,7 @@ static void invite_service(void) {
     store_state_t st;
     uint32_t now = millis_hw();
 
-    if (timebase_uptime_s() * 1000u > DEVICE_ENROL_WINDOW_MS)
+    if ((timebase_uptime_s() - enrol_window_from_s) * 1000u > DEVICE_ENROL_WINDOW_MS)
         return;
     if (invite_last_ms != 0u && (uint32_t)(now - invite_last_ms) < INVITE_RETRY_GAP_MS)
         return;
@@ -865,7 +865,7 @@ static void invite_service(void) {
     if (!pair_init_live_ctx(&c, &st))
         return;
 
-    invites_heard++;
+    invite_slices++;
     int rc = join_run_invited(&pair_ctx, &join_res, INVITE_SLICE_MS, &c,
                               st.init_ceiling);
     if (rc == 0) {
@@ -877,11 +877,23 @@ static void invite_service(void) {
         join_stats_t s2;
         join_stats(&s2);
         invites_refused++;
-        tlm_emit(TLM_JOIN_TRY, invites_heard, (uint32_t)(-rc),
+        tlm_emit(TLM_JOIN_TRY, invite_slices, (uint32_t)(-rc),
                  s2.invite_refused, 1u);
         return;
     }
-    tlm_emit(TLM_JOIN_TRY, invites_heard, (uint32_t)(-rc), 0u, 0u);
+    tlm_emit(TLM_JOIN_TRY, invite_slices, (uint32_t)(-rc), 0u, 0u);
+}
+
+/* Keeps the identity and drops the grant, which are one store today.
+ * radio_devices_docs/wl55_device/arch/store.md */
+int device_release_pairing(void) {
+    if (store_release_pairing() != 0)
+        return -1;
+    /* The RAM copy too, or it stays paired until the reset this replaces. */
+    memset(&join_res, 0, sizeof(join_res));
+    enrol_window_from_s = timebase_uptime_s();
+    invite_last_ms = 0;
+    return 0;
 }
 
 void device_service(void) {
@@ -921,7 +933,15 @@ void device_snapshot(device_view_t *v) {
     v->rssi_valid      = beacon_rssi_valid;
     v->tx_floor        = tx_floor;
     v->tx_floor_known  = tx_floor_known;
-    v->invites_heard   = invites_heard;
+    {
+        /* Only the verifier sees a frame.
+         * radio_devices_docs/wl55_device/radio/pairing.md */
+        pair_init_stats_t ps;
+
+        pair_init_stats(&ps);
+        v->invites_seen = ps.seen;
+    }
+    v->invite_slices   = invite_slices;
     v->invites_refused = invites_refused;
     v->reports_sent    = reports_sent;
     v->beacons_missed  = beacons_missed;

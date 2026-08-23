@@ -68,6 +68,18 @@ int  store_legacy_present(uint32_t *dev_id_out);
 /** @brief Persists the network a PAIR_INIT must claim to be from. */
 int  store_save_network(uint32_t hub_id, uint16_t net_id);
 
+/**
+ * @brief Drops everything a pairing created and keeps the identity.
+ * @retval  0  released, or there was nothing to release
+ * @retval !=0 the store refused the write and the node is still paired
+ *
+ * `priv`, `dev_id` and `counter_mark` survive, so the unit keeps the id on its
+ * label and never reuses a transmit counter. Everything else a hub gave it goes,
+ * including the network binding, so it can be moved to a replacement hub.
+ * radio_devices_docs/wl55_device/arch/store.md
+ */
+int  store_release_pairing(void);
+
 /** @brief Test hook: writes the short record a torn write leaves behind. */
 int  store_write_torn(void);
 

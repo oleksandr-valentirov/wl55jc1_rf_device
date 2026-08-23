@@ -82,8 +82,30 @@ static void show_state(void) {
     out("counts  reports %lu  missed %lu  downlinks %lu  recoveries %lu\r\n",
         (unsigned long)v.reports_sent, (unsigned long)v.beacons_missed,
         (unsigned long)v.downlinks_applied, (unsigned long)v.recover_entered);
-    out("invites heard %lu  refused %lu\r\n",
-        (unsigned long)v.invites_heard, (unsigned long)v.invites_refused);
+    /* Only `seen` is a denominator.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
+    out("invites seen %lu  refused %lu  (listening slices %lu)\r\n",
+        (unsigned long)v.invites_seen, (unsigned long)v.invites_refused,
+        (unsigned long)v.invite_slices);
+}
+
+/* The one console command that writes.
+ * radio_devices_docs/wl55_device/arch/store.md */
+static void do_release(void) {
+    device_view_t v;
+
+    device_snapshot(&v);
+    if (!v.paired) {
+        out("not paired - nothing to release\r\n");
+        return;
+    }
+    if (device_release_pairing() != 0) {
+        out("release failed: the store refused the write, still paired\r\n");
+        return;
+    }
+    /* The id is the point: an erase would have drawn a new one. */
+    out("released; identity kept, listening again for %lu s\r\n",
+        (unsigned long)(DEVICE_ENROL_WINDOW_MS / 1000u));
 }
 
 static void show_ident(void) {
@@ -189,12 +211,14 @@ static void show_help(void) {
     out("load     where the CPU's time goes\r\n");
     out("curve    x25519 and the wire vectors, with their cost\r\n");
     out("join     the pairing window's counters and its timing\r\n");
+    out("release  drop the pairing, keep the identity, listen again\r\n");
 #if WL55_ROLE_HUB
     out("hub      the hub role's grid and enrolment ladder\r\n");
 #endif
     out("?        this list\r\n");
-    /* Stated here because its absence is the design, not an omission. */
-    out("\r\nread-only: nothing here starts or stops the node.\r\n");
+    /* One command writes now, and saying which is the point of the line. */
+    out("\n'release' is the only one that changes anything; the rest only look."
+        "\r\nNothing here starts or stops the node.\r\n");
 }
 
 /* The KATs had no caller, which is how a self-test reads as passing.
@@ -275,6 +299,7 @@ static void dispatch(void) {
     else if (strcmp(cmd, "load") == 0)    show_load();
     else if (strcmp(cmd, "curve") == 0)   show_curve();
     else if (strcmp(cmd, "join") == 0)    show_join();
+    else if (strcmp(cmd, "release") == 0) do_release();
 #if WL55_ROLE_HUB
     else if (strcmp(cmd, "hub") == 0)     show_hub();
 #endif

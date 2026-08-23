@@ -311,9 +311,8 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         p->net_id  = beacon.net_id;
         res->superframe = beacon.superframe;
     }
-    /* Kept: PAIR_INIT replaces the beacon that would name its network. Writes on change.
-     * radio_devices_docs/wl55_device/radio/pairing.md */
-    (void)store_save_network(p->hub_id, p->net_id);
+    /* Not stored here: written by an attempt, it bound the node to a hub it
+     * never paired with. radio_devices_docs/wl55_device/radio/pairing.md */
 
     /* Fresh per attempt, refused rather than sent as zero: zero restores the replay.
      * radio_devices_docs/wl55_device/radio/pairing.md */
@@ -395,6 +394,10 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
         stats.store_failed++;
         return -13;
     }
+    /* The binding, and only now: a success is what creates it.
+     * radio_devices_docs/wl55_device/radio/pairing.md */
+    if (rc == 0)
+        (void)store_save_network(p->hub_id, p->net_id);
     return rc;
 }
 

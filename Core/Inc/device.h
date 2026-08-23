@@ -46,12 +46,26 @@ typedef struct device_view {
     uint8_t  rssi_valid;
     uint32_t tx_floor;          /**< superframe of the newest downlink opened this boot */
     uint8_t  tx_floor_known;    /**< nothing may be sealed until one has */
-    uint32_t invites_heard;
+    uint32_t invite_slices;     /**< times the node looked, never a denominator */
+    uint32_t invites_seen;      /**< frames that parsed as a PAIR_INIT at all */
     uint32_t invites_refused;
     uint32_t reports_sent;
     uint32_t beacons_missed;
     uint32_t downlinks_applied;
 } device_view_t;
+
+/* Bounded by a physical act, and a release is one.
+ * radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md */
+#define DEVICE_ENROL_WINDOW_MS  600000u
+
+/**
+ * @brief Drops the pairing, keeps the identity, and starts listening again.
+ * @retval  0  released; the enrolment window reopens from now
+ * @retval -1  the store refused and the node is still paired
+ *
+ * The only route that does not need a debug probe. ROADMAP item 58.
+ */
+int device_release_pairing(void);
 
 /**
  * @brief Fills a caller's view of the node. Reads only; changes nothing.

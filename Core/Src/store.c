@@ -331,6 +331,30 @@ int store_save_network(uint32_t hub_id, uint16_t net_id) {
     return append(&r);
 }
 
+/* The identity is what a label names, so a release must not draw a new one.
+ * radio_devices_docs/wl55_device/arch/store.md */
+int store_release_pairing(void) {
+    store_record_t r;
+
+    if (!cached_valid)
+        return -1;
+    r = cached;
+    memset(r.session,    0, STORE_KEY_LEN);
+    memset(r.hop_key,    0, STORE_KEY_LEN);
+    memset(r.hub_static, 0, STORE_PUB_C_LEN);
+    r.slot         = 0;
+    r.report_every = 0;          /* what join_restore() reads as "not paired" */
+    /* The binding to the old hub, or the node refuses its replacement WRONG_NET. */
+    r.hub_id = 0;
+    r.net_id = 0;
+    /* A position in the old hub's timeline; the window bounds a replay now. */
+    r.init_ceiling = 0;
+    /* A fresh nonce space, the same rule store_save_pairing() follows. */
+    r.key_gen  = cached.key_gen + 1u;
+    r.rx_floor = 0;
+    return append(&r);
+}
+
 int store_key_gen(uint32_t *gen) {
     if (!cached_valid)
         return -1;

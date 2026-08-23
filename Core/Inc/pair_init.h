@@ -30,6 +30,10 @@ typedef struct {
     uint32_t bad_mode;
     uint32_t last_superframe; /* of the last accepted init */
     uint32_t ceiling;         /* what a replay is compared against */
+    uint32_t wrong_net_hub;   /**< hub_id the last WRONG_NET carried */
+    uint32_t wrong_net_want;  /**< hub_id this node is bound to */
+    uint16_t wrong_net_net;   /**< net_id the last WRONG_NET carried */
+    uint16_t wrong_net_want_net; /**< net_id this node is bound to */
 } pair_init_stats_t;
 
 /* The device's own identity and the hub's static key, which together give Z1. */

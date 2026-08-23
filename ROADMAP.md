@@ -1503,26 +1503,35 @@ correctly.
 
 `radio_devices_docs/wl55_device/testing/bench-harness.md`.
 
-### 58. A paired device cannot be released without a debug probe — `blocking`
+### 58. A device with no console still cannot be released — `blocking`
 
-The grant lives in flash and `device_init()` restores it before anything else, so
-a paired node ignores invitations for the rest of its life. `device remove` on the
-hub clears only the hub's half. **There is no operator-facing route to the other
-half**: the console is read-only under RG-T-2, so releasing a device today needs
-`STM32_Programmer_CLI -e 126 127` on the board.
+**Narrowed 2026-08-23.** The half that needed a debug probe is built:
+`store_release_pairing()` appends a record that drops the session, the hop key,
+the hub's static key, the slot, the rate, the replay floor **and the network
+binding**, and keeps `priv`, `dev_id` and `counter_mark`. So a released unit comes
+back with the **same id its label carries** — which an erase of pages 126/127
+could never do, and which cost this bench six identity changes in one day.
 
-A sensor therefore cannot be moved to a replacement hub, which the product
-requirement of 2026-08-23 assumes it can. ADR-0024 asserted a power cycle was
-enough; it is not, and that claim is corrected in the record.
+`device_release_pairing()` clears the RAM copy too and re-anchors the enrolment
+window on the release, because [ADR-0024](../radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md)
+bounds listening to a physical act and boot was being treated as the only one.
+The console command is `release`, and it is the first on this node that writes.
 
-Erasing the store also drops the identity, so the unit returns with a **new
-device id** and its printed label is wrong. Whatever the release mechanism turns
-out to be, it has to keep the identity and drop only the pairing — they are in
-one store today.
+**What is left is the product route, and it is a decision rather than a defect.**
+Under `-DWL55_CONSOLE=OFF`, which RG-T-2 requires to link and which a shipped
+sensor is, there is still no way to release. The candidates are a button held at
+power-up, a sealed downlink from the hub, or an accepted answer that a sensor is
+released only at a bench — and the second cannot cover the case this item exists
+for, which is a hub that is *gone*. Nothing should be built here until that is
+chosen.
+
+**Not verified on hardware.** It builds, both console arms link, host tests pass;
+no board has released and re-paired yet. The control is: release, read `ident`,
+confirm the id did not move, then pair to a hub and check the id the hub sees.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
 
-### 59. `invites heard` counts the times the node looked, not what arrived — `defect`
+### 59. `invites heard` counts the times the node looked, not what arrived — `closed 2026-08-23`
 
 `invites_heard` in `device.c` increments before `join_run_invited` is called, so
 its population is **listening slices**, not invitations. Against the H755 it read
@@ -1534,12 +1543,14 @@ console has been the wrong quantity.
 The refusal counter beside it is honest — `refused 19` really was nineteen
 refusals — which is what made the pair readable as a fraction when it is not one.
 
-Rename to what it counts and add a separate counter incremented from
-`pair_init_verify`'s `seen`, which is the number that was wanted.
+Renamed to `invite_slices`, which is what it counts, and the console now prints
+`invites seen` beside it from `pair_init_verify`'s `seen` — the only counter that
+sees a frame. The slice count is still shown, in brackets, because it is the right
+denominator for a different question: how often the node was listening.
 
 `radio_devices_docs/wl55_device/radio/pairing.md`.
 
-### 60. An unpaired device silently refuses a hub it has not paired with — `defect`
+### 60. An unpaired device silently refuses a hub it has not paired with — `closed 2026-08-23`
 
 `pair_init_verify` skips the network comparison only while the stored `hub_id` is
 zero. A node that reached a PAIR_RSP and got no further keeps that hub's id in
@@ -1547,10 +1558,20 @@ flash and still reports `paired no`, so a second hub's invitations are refused
 `WRONG_NET` — nineteen of nineteen in the WL55-to-WL55 control of 2026-08-23,
 with nothing on the console naming the id being compared against.
 
-Two things are wrong and they are separable. The store keeps a network binding
-that no successful pairing ever created, and the refusal is invisible: `join`
-prints the numeric `rc` and neither id. Whatever fixes item 58's release route
-has to clear this binding too, or a released device is still bound to the hub it
-failed to pair with.
+Two things were wrong and they were separable, and both are fixed.
+
+`store_save_network()` was called immediately after the invitation verified,
+which is an *attempt*, so a node that got as far as a PAIR_RSP and no further
+kept that hub's id for good. It moves to the success path, beside
+`store_save_hub_static()` and `store_save_pairing()`: a binding is something a
+completed pairing creates.
+
+The refusal now names both sides — `wrong_net_hub` / `wrong_net_net` against
+`wrong_net_want` / `wrong_net_want_net` — so a WRONG_NET says which hub it heard
+and which one it is holding out for, rather than a bare `rc`.
+
+Item 58's release clears the binding as well, which is what that item asked for.
+
+**Not verified on hardware**: the nineteen-of-nineteen control has not been re-run.
 
 `radio_devices_docs/radio/pairing.md`.
