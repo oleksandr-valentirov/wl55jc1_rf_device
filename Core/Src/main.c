@@ -24,6 +24,7 @@
 #include "load.h"
 #include "console.h"
 #include "device.h"
+#include "hublogic.h"
 #include "radio.h"
 #include "timebase.h"
 /* USER CODE END Includes */
@@ -144,7 +145,11 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   /* After the generated BSP_COM_Init above, which re-initialises the same UART. */
+#if WL55_ROLE_HUB
+  hub_init();
+#else
   device_init();
+#endif
   console_init();
   extern volatile uint32_t loop_mark;
   extern volatile uint32_t loop_beat;
@@ -159,7 +164,11 @@ int main(void)
     loop_mark = 0x12u;
     timebase_service();
     loop_mark = 0x13u;
+#if WL55_ROLE_HUB
+    hub_service();
+#else
     device_service();
+#endif
     loop_mark = 0x15u;
     telemetry_service();
     loop_beat++;

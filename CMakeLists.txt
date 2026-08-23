@@ -49,6 +49,20 @@ message(STATUS "Cube FW: ${CUBE_FW_PATH}")
 # radio_devices_docs/wl55_device/testing/console.md
 option(WL55_CONSOLE "compile the read-only console" ON)
 
+# NODE is the product build; HUB drives the same air from a second board.
+# radio_devices_docs/radio/phy-seam.md
+set(WL55_ROLE "NODE" CACHE STRING "NODE or HUB")
+set_property(CACHE WL55_ROLE PROPERTY STRINGS NODE HUB)
+if(NOT WL55_ROLE STREQUAL "NODE" AND NOT WL55_ROLE STREQUAL "HUB")
+    message(FATAL_ERROR "WL55_ROLE must be NODE or HUB, not ${WL55_ROLE}")
+endif()
+
+# The device this hub build invites, and the service gap it injects each pass.
+# radio_devices_docs/radio/phy-seam.md
+set(WL55_HUB_DEV_ID "0x751C5A3Bu" CACHE STRING "the device a HUB build invites")
+set(WL55_HUB_ID "0x574C3535u" CACHE STRING "the network id a HUB build claims")
+set(WL55_HUB_STALL_US "0" CACHE STRING "microseconds of injected service gap")
+
 # The wire vectors are included from the hub's tree, never copied.
 # radio_devices_docs/wl55_device/testing/host-tests.md
 if(NOT DEFINED OPENHUB_PATH)
@@ -121,6 +135,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/superframe.c
     Core/Src/beacon.c
     Core/Src/hop.c
+    Core/Src/phy_sx126x.c
+    Core/Src/hublogic.c
     Core/Src/load.c
     Core/Src/pair_init.c
     third_party/monocypher/monocypher.c
@@ -146,6 +162,10 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
     WL55_CONSOLE=$<BOOL:${WL55_CONSOLE}>
+    WL55_ROLE_HUB=$<STREQUAL:${WL55_ROLE},HUB>
+    WL55_HUB_DEV_ID=${WL55_HUB_DEV_ID}
+    WL55_HUB_ID=${WL55_HUB_ID}
+    WL55_HUB_STALL_US=${WL55_HUB_STALL_US}u
 )
 
 # Remove wrong libob.a library dependency when using cpp files

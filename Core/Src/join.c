@@ -527,7 +527,8 @@ int join_selftest(join_selftest_t *r) {
          * radio_devices_docs/wl55_device/radio/pairing.md */
         uint8_t swapped[sizeof(PV_FRAME_RSP)];
         memcpy(swapped, PV_FRAME_RSP, sizeof(swapped));
-        memcpy(swapped + offsetof(radio_pair_rsp_t, eph_pubkey), V_HUB_PUB, 33);
+        memcpy(swapped + offsetof(radio_pair_rsp_t, eph_pubkey), V_HUB_PUB,
+               EXCHANGE_POINT_LEN);
         r->eph_static_rejected =
             handle_response(&vp, &vres, swapped, sizeof(swapped), &vkeys) == -5;
         memset(&vkeys, 0, sizeof(vkeys));

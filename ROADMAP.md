@@ -1580,3 +1580,36 @@ out to be, it has to keep the identity and drop only the pairing — they are in
 one store today.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
+
+### 59. `invites heard` counts the times the node looked, not what arrived — `defect`
+
+`invites_heard` in `device.c` increments before `join_run_invited` is called, so
+its population is **listening slices**, not invitations. Against the H755 it read
+`invites heard 68  refused 0` beside `req sent 4`, which reads as a six-percent
+success rate and is not one: nothing on this device records how many invitations
+actually reached it, so the denominator of every enrolment claim made from this
+console has been the wrong quantity.
+
+The refusal counter beside it is honest — `refused 19` really was nineteen
+refusals — which is what made the pair readable as a fraction when it is not one.
+
+Rename to what it counts and add a separate counter incremented from
+`pair_init_verify`'s `seen`, which is the number that was wanted.
+
+`radio_devices_docs/wl55_device/radio/pairing.md`.
+
+### 60. An unpaired device silently refuses a hub it has not paired with — `defect`
+
+`pair_init_verify` skips the network comparison only while the stored `hub_id` is
+zero. A node that reached a PAIR_RSP and got no further keeps that hub's id in
+flash and still reports `paired no`, so a second hub's invitations are refused
+`WRONG_NET` — nineteen of nineteen in the WL55-to-WL55 control of 2026-08-23,
+with nothing on the console naming the id being compared against.
+
+Two things are wrong and they are separable. The store keeps a network binding
+that no successful pairing ever created, and the refusal is invisible: `join`
+prints the numeric `rc` and neither id. Whatever fixes item 58's release route
+has to clear this binding too, or a released device is still bound to the hub it
+failed to pair with.
+
+`radio_devices_docs/radio/pairing.md`.

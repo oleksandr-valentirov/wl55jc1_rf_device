@@ -100,6 +100,9 @@ int      radio_set_channel(uint8_t slot);
 /** @brief The carrier for a grid slot. */
 uint32_t radio_slot_hz(uint8_t slot);
 
+/** @brief Tunes to an arbitrary carrier, for a caller that owns the channel plan. */
+int radio_set_carrier_hz(uint32_t hz);
+
 /** @brief The grid slot reserved for joining, excluded from the hop set. */
 uint8_t  radio_join_slot(void);
 
@@ -116,3 +119,21 @@ int radio_receive_at(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info,
 /** @brief Times the chip's own timeout; the excess over it is the startup ramp.
  *  radio_devices_docs/wl55_device/radio/README.md */
 int radio_rx_ramp_probe(uint32_t timeout_us, uint32_t *span_us);
+
+/** @brief Enters continuous receive; the chip stays in RX across frames.
+ *  radio_devices_docs/wl55_device/radio/driver.md */
+int radio_listen(void);
+
+/** @brief Leaves continuous receive. */
+int radio_listen_stop(void);
+
+/** @brief Whether continuous receive is currently entered. */
+int radio_listening(void);
+
+/** @brief Non-blocking poll of a continuous receive.
+ *  @retval  1 nothing yet
+ *  @retval  0 a frame, CRC verified
+ *  @retval -3 a frame, CRC failed
+ *  @retval -5 a sync word matched and the payload is still arriving
+ *  @retval -1 an SPI or state fault */
+int radio_listen_poll(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info);

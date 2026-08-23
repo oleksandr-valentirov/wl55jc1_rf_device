@@ -12,6 +12,7 @@
 #include "crypto.h"
 #include "join.h"
 #include "device.h"
+#include "hublogic.h"
 #include "load.h"
 #include "main.h"
 #include "pairing.h"
@@ -143,6 +144,43 @@ static void show_load(void) {
     }
 }
 
+#if WL55_ROLE_HUB
+/* The hub role's whole ladder: every stage, so no step fails as a silent zero.
+ * radio_devices_docs/radio/phy-seam.md */
+static void show_hub(void) {
+    hub_view_t h;
+
+    hub_snapshot(&h);
+    out("grid    sf %lu  superframes %lu  windows %lu  stall %lu us\r\n",
+        (unsigned long)h.frame_counter, (unsigned long)h.superframes,
+        (unsigned long)h.windows, (unsigned long)h.stall_us);
+    out("tx      invites %lu (err %lu)  beacons %lu\r\n",
+        (unsigned long)h.inits_sent, (unsigned long)h.init_tx_err,
+        (unsigned long)h.beacons);
+    out("rx      sync %lu  crc err %lu  frames %lu  other %lu (last type %02x)\r\n",
+        (unsigned long)h.ev_sync, (unsigned long)h.ev_crc,
+        (unsigned long)h.ev_frame, (unsigned long)h.other_frames, h.other_type);
+    out("req     seen %lu  bad frame %lu  ids %lu  nonce %lu  point %lu  key %lu\r\n",
+        (unsigned long)h.req_seen, (unsigned long)h.req_bad_frame,
+        (unsigned long)h.req_bad_ids, (unsigned long)h.req_bad_nonce,
+        (unsigned long)h.req_bad_point, (unsigned long)h.req_no_key);
+    out("rsp     sent %lu  tx err %lu\r\n",
+        (unsigned long)h.rsp_sent, (unsigned long)h.rsp_tx_err);
+    out("conf    seen %lu  bad frame %lu  ids %lu  no exchange %lu  mismatch %lu\r\n",
+        (unsigned long)h.conf_seen, (unsigned long)h.conf_bad_frame,
+        (unsigned long)h.conf_bad_ids, (unsigned long)h.conf_no_exchange,
+        (unsigned long)h.conf_mismatch);
+    out("accept  sent %lu  err %lu  paired %lu  timeouts %lu\r\n",
+        (unsigned long)h.accept_sent, (unsigned long)h.accept_tx_err,
+        (unsigned long)h.paired, (unsigned long)h.ex_timeouts);
+    out("level   request %d dBm  confirm %d dBm\r\n",
+        h.req_rssi_dbm, h.conf_rssi_dbm);
+    out("timing  i->q %lu  q->s %lu  s->c %lu  c->a %lu us\r\n",
+        (unsigned long)h.init_to_req_us, (unsigned long)h.req_to_rsp_us,
+        (unsigned long)h.rsp_to_conf_us, (unsigned long)h.conf_to_accept_us);
+}
+#endif
+
 static void show_help(void) {
     out("state    what the node is doing\r\n");
     out("ident    identity and public key, to enrol on a hub\r\n");
@@ -151,6 +189,9 @@ static void show_help(void) {
     out("load     where the CPU's time goes\r\n");
     out("curve    x25519 and the wire vectors, with their cost\r\n");
     out("join     the pairing window's counters and its timing\r\n");
+#if WL55_ROLE_HUB
+    out("hub      the hub role's grid and enrolment ladder\r\n");
+#endif
     out("?        this list\r\n");
     /* Stated here because its absence is the design, not an omission. */
     out("\r\nread-only: nothing here starts or stops the node.\r\n");
@@ -231,6 +272,9 @@ static void dispatch(void) {
     else if (strcmp(cmd, "load") == 0)    show_load();
     else if (strcmp(cmd, "curve") == 0)   show_curve();
     else if (strcmp(cmd, "join") == 0)    show_join();
+#if WL55_ROLE_HUB
+    else if (strcmp(cmd, "hub") == 0)     show_hub();
+#endif
     else if (strcmp(cmd, "?") == 0)       show_help();
     else out("%s? try ?\r\n", cmd);
 }

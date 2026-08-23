@@ -168,6 +168,11 @@ int radio_set_channel(uint8_t slot) {
     return set_frequency(radio_slot_hz(slot));
 }
 
+/* The carrier as a number, for a caller that owns the channel plan itself. */
+int radio_set_carrier_hz(uint32_t hz) {
+    return set_frequency(hz);
+}
+
 /* Settable so a variant is swept inside one window, not one flash per guess.
  * radio_devices_docs/wl55_device/radio/driver.md */
 int radio_set_crc(const char *mode) {
@@ -581,6 +586,117 @@ int radio_receive(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info) {
 int radio_receive_at(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info,
                      uint32_t start_us) {
     return receive_from(payload, max_len, info, &start_us);
+}
+
+/* --- continuous receive: one entry, many frames --------------------------- */
+
+/* Single receive returns to standby on every frame, which loses the next one.
+ * radio_devices_docs/wl55_device/radio/driver.md */
+static uint8_t listening;
+
+static void capture_rearm(void) {
+    radio_capture_seen = 0u;
+    HAL_NVIC_ClearPendingIRQ(SUBGHZ_Radio_IRQn);
+    HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn);
+}
+
+int radio_listen(void) {
+    uint8_t buf[3];
+
+    if (!configured)
+        return -1;
+    if (clear_irq(0xFFFFu) != 0)
+        return -1;
+    if (set_packet_params(RADIO_MAX_PAYLOAD) != 0)
+        return -1;
+    HAL_NVIC_SetPriority(SUBGHZ_Radio_IRQn, 5, 0);
+    capture_rearm();
+    BSP_RADIO_ConfigRFSwitch(RADIO_SWITCH_RX);
+    /* 0xFFFFFF is continuous: the chip stays in RX across frames and CRC failures. */
+    buf[0] = 0xFFu; buf[1] = 0xFFu; buf[2] = 0xFFu;
+    if (cmd_set(RADIO_SET_RX, buf, 3) != 0) {
+        BSP_RADIO_ConfigRFSwitch(RADIO_SWITCH_OFF);
+        return -1;
+    }
+    listening = 1u;
+    return 0;
+}
+
+int radio_listen_stop(void) {
+    if (!listening)
+        return 0;
+    listening = 0u;
+    HAL_NVIC_DisableIRQ(SUBGHZ_Radio_IRQn);
+    BSP_RADIO_ConfigRFSwitch(RADIO_SWITCH_OFF);
+    return radio_standby();
+}
+
+int radio_listening(void) {
+    return listening ? 1 : 0;
+}
+
+int radio_listen_poll(uint8_t *payload, uint8_t max_len, radio_rx_info_t *info) {
+    uint16_t irq = 0;
+
+    if (!listening)
+        return -1;
+    if (get_irq(&irq) != 0)
+        return -1;
+
+    if (irq & IRQ_CRC_ERR) {
+        memset(info, 0, sizeof(*info));
+        info->crc_error   = 1;
+        info->done_us     = micros();
+        info->capture_valid = radio_capture_seen;
+        info->capture_us    = radio_capture_us;
+        info->capture_sync  = (uint8_t)(capture_irq == IRQ_SYNC_VALID);
+        clear_irq(IRQ_CRC_ERR | IRQ_RX_DONE | IRQ_SYNC_VALID | IRQ_PREAMBLE_DET);
+        capture_rearm();
+        return -3;
+    }
+
+    if (irq & IRQ_RX_DONE) {
+        uint8_t st[2] = {0};
+        uint8_t ps[3] = {0};
+        uint8_t len;
+
+        memset(info, 0, sizeof(*info));
+        info->done_us       = micros();
+        info->capture_valid = radio_capture_seen;
+        info->capture_us    = radio_capture_us;
+        info->capture_sync  = (uint8_t)(capture_irq == IRQ_SYNC_VALID);
+        if (cmd_get(RADIO_GET_RXBUFFERSTATUS, st, sizeof(st)) != 0)
+            return -1;
+        len = st[0];
+        if (len > max_len)
+            len = max_len;
+        load_enter(LOAD_RADIO_SPI);
+        HAL_StatusTypeDef rb = HAL_SUBGHZ_ReadBuffer(&hsubghz, st[1], payload, len);
+        load_exit();
+        if (rb != HAL_OK)
+            return -1;
+        if (cmd_get(RADIO_GET_PACKETSTATUS, ps, sizeof(ps)) == 0)
+            info->rssi_dbm = -(int16_t)(ps[2] / 2);
+        info->len = len;
+        info->start_us = (info->capture_valid && info->capture_sync)
+                       ? info->capture_us - RADIO_AIR_START_TO_SYNC_US
+                       : info->done_us - radio_rx_air_time_us(len);
+        clear_irq(IRQ_RX_DONE | IRQ_SYNC_VALID | IRQ_PREAMBLE_DET);
+        capture_rearm();
+        return 0;
+    }
+
+    if (irq & IRQ_SYNC_VALID) {
+        memset(info, 0, sizeof(*info));
+        info->capture_valid = radio_capture_seen;
+        info->capture_us    = radio_capture_us;
+        info->capture_sync  = 1u;
+        /* Cleared alone: the payload of this frame has not arrived yet. */
+        clear_irq(IRQ_SYNC_VALID);
+        return -5;
+    }
+
+    return 1;
 }
 
 int radio_rx_ramp_probe(uint32_t timeout_us, uint32_t *span_us) {
