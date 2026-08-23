@@ -341,6 +341,10 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
     /* A frame of the response type, NOT a valid PAIR_RSP: three checks are still ahead.
      * radio_devices_docs/wl55_device/radio/pairing.md */
     stats.rsp_heard++;
+    /* Every term of the exchange's budget, from one clock on one side.
+     * radio_devices_docs/radio/pairing.md */
+    uint32_t t_rsp = micros();
+    stats.req_to_rsp_us = t_rsp - t_req;
     stats.rsp_len     = info.len;
     stats.rsp_rssi_dbm = info.rssi_dbm;
     stats.rsp_type    = info.len > 0u ? rx[0] : 0u;
@@ -359,6 +363,7 @@ static int join_run_ex(pairing_ctx_t *p, join_result_t *res, uint32_t timeout_ms
     stats.conf_sent++;
 
     uint32_t t_conf = micros();
+    stats.rsp_to_conf_us = t_conf - t_rsp;
     rc = receive_until(rx, sizeof(rx), &info, RADIO_FRAME_PAIR_ACCEPT, t_conf,
                        timeout_ms * 1000u, &stats.accept_skipped,
                        &stats.accept_crc_err, &stats.accept_other_type);

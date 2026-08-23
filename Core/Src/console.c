@@ -196,7 +196,10 @@ static void show_join(void) {
     out("req sent %lu  refused rc %u  last type %02x len %u\r\n",
         (unsigned long)j.req_sent, (unsigned)j.invite_refused,
         (unsigned)j.last_type, (unsigned)j.last_len);
-    out("trigger -> request  %lu us\r\n", (unsigned long)j.beacon_to_req_us);
+    out("timing  invite -> request %lu us  request -> response %lu us"
+        "  response -> confirm %lu us\r\n",
+        (unsigned long)j.beacon_to_req_us, (unsigned long)j.req_to_rsp_us,
+        (unsigned long)j.rsp_to_conf_us);
     out("rsp      heard %lu  timeout %lu  crc %lu  skipped %lu (last type %02x)  len %u\r\n",
         (unsigned long)j.rsp_heard, (unsigned long)j.rsp_timeout,
         (unsigned long)j.rsp_crc_err, (unsigned long)j.rsp_skipped,
