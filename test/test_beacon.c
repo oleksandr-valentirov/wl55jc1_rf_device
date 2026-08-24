@@ -223,7 +223,7 @@ static void test_recovers_from_running_ahead(void) {
 
     /* Hub at 1002, device at 1200 because a bad period estimate ran it forward.
      * radio_devices_docs/wl55_device/testing/host-tests.md */
-    sf.counter = 1200u;
+    sf.g.counter = 1200u;
 
     int recovered = 0;
     for (int i = 0; i < 64; i++) {
@@ -247,7 +247,7 @@ static void test_recovers_from_running_ahead(void) {
 static void test_resync_does_not_admit_quiesce(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 1000u);
-    sf.counter = 1200u;
+    sf.g.counter = 1200u;
 
     /* Beyond SUPERFRAME_MAX_JUMP: merely behind is where honest beacons arrive.
      * radio_devices_docs/wl55_device/testing/host-tests.md */
@@ -271,7 +271,7 @@ static void test_missed_beacon_does_not_poison_period(void) {
     superframe_t sf; quiesce_t q;
     settle(&sf, &q, 500u);
 
-    uint32_t before = sf.period_us;
+    uint32_t before = sf.g.period;
     for (uint32_t i = 0; i < 6u; i++) {
         /* Two superframes of clock, and a counter that says so. */
         host_clock_advance(2u * SUPERFRAME_US);
@@ -279,10 +279,10 @@ static void test_missed_beacon_does_not_poison_period(void) {
         CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_OK,
               "a beacon after a quiesce gap must still be accepted");
     }
-    CHECK(sf.period_us >= SUPERFRAME_PERIOD_MIN_US &&
-          sf.period_us <= SUPERFRAME_PERIOD_MAX_US,
+    CHECK(sf.g.period >= SUPERFRAME_PERIOD_MIN_US &&
+          sf.g.period <= SUPERFRAME_PERIOD_MAX_US,
           "period drifted to %lu after gapped beacons, want %u..%u",
-          (unsigned long)sf.period_us,
+          (unsigned long)sf.g.period,
           (unsigned)SUPERFRAME_PERIOD_MIN_US, (unsigned)SUPERFRAME_PERIOD_MAX_US);
     (void)before;
 }
@@ -299,9 +299,9 @@ static void test_period_clamp(void) {
         uint8_t len = build(2u, 702u + i, 0u, 0u);
         beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     }
-    CHECK(sf.period_us <= SUPERFRAME_PERIOD_MAX_US,
+    CHECK(sf.g.period <= SUPERFRAME_PERIOD_MAX_US,
           "a lying transmitter walked the period to %lu, above the %u ceiling",
-          (unsigned long)sf.period_us, (unsigned)SUPERFRAME_PERIOD_MAX_US);
+          (unsigned long)sf.g.period, (unsigned)SUPERFRAME_PERIOD_MAX_US);
 }
 
 /* A hub reboot jumps by KV_RESERVE_AHEAD and must be accepted, not self-healed.
@@ -315,7 +315,7 @@ static void test_hub_reboot_jump_is_accepted(void) {
     CHECK(beacon_apply(frame, len, &sf, &q, micros() - RADIO_AIR_START_TO_END_US(14u), NULL) == BEACON_OK,
           "a %u-superframe reserve jump must be accepted, not read as a forgery",
           4096u);
-    CHECK(sf.counter == 5001u + 4096u, "counter %lu", (unsigned long)sf.counter);
+    CHECK(sf.g.counter == 5001u + 4096u, "counter %lu", (unsigned long)sf.g.counter);
 
     /* And the bound still bites well before a day's worth of counter space. */
     settle(&sf, &q, 5000u);
@@ -338,13 +338,13 @@ static void test_align_without_start(void) {
     uint8_t len = build(2u, 555229u, 0u, 0u);
     beacon_rc_t rc = beacon_apply(frame, len, &sf, &q, micros(), NULL);
     CHECK(rc == BEACON_OK, "an unstarted clock refused a good beacon: %d", (int)rc);
-    CHECK(sf.running, "align left the clock stopped");
-    CHECK(sf.period_us != 0u, "a running clock kept a zero period");
-    CHECK((int32_t)(sf.next_boundary_us - micros()) > 0,
+    CHECK(sf.g.running, "align left the clock stopped");
+    CHECK(sf.g.period != 0u, "a running clock kept a zero period");
+    CHECK((int32_t)((sf.g.start + sf.g.period) - micros()) > 0,
           "the next boundary is not ahead of now, so it can never be reached");
 
     /* Gated, not sequenced: CHECK records and returns, so this would hang. */
-    if (sf.period_us == 0u) {
+    if (sf.g.period == 0u) {
         printf("  (skipping superframe_now: a zero period never returns)\n");
         return;
     }
@@ -361,7 +361,7 @@ static void test_start_refuses_a_zero_period(void) {
     memset(&sf, 0, sizeof(sf));
     host_clock_set(1000000u);
     superframe_start(&sf, 100u, 0u);
-    CHECK(sf.period_us != 0u, "superframe_start kept a zero period");
+    CHECK(sf.g.period != 0u, "superframe_start kept a zero period");
 }
 
 /* A key decides whether a device can join the grid; the counter mark does not.
@@ -382,8 +382,8 @@ static void test_mark_ahead_does_not_block_sync(void) {
     int rc = beacon_apply(frame, len, &sf, &q,
                           micros() - RADIO_AIR_START_TO_END_US(14u), NULL);
     CHECK(rc == BEACON_OK, "a beacon below the durable mark was refused, rc %d", rc);
-    CHECK(sf.counter == hub, "counter %lu, want the hub's %lu",
-          (unsigned long)sf.counter, (unsigned long)hub);
+    CHECK(sf.g.counter == hub, "counter %lu, want the hub's %lu",
+          (unsigned long)sf.g.counter, (unsigned long)hub);
     CHECK(sf.state != SF_SYNC_STALE, "state is STALE after a legitimate beacon");
     CHECK(sf.rejected == 0u, "%lu refusal(s) recorded", (unsigned long)sf.rejected);
 }

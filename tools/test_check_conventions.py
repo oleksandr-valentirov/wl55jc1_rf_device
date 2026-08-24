@@ -62,12 +62,8 @@ def portable_corpus(**edits):
     files = {
         "Core/Src/exchange.c":   '#include <string.h>\n#include "exchange.h"\nint a;\n',
         "Core/Src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\nint b;\n',
-        "Core/Src/beacon.c":     '#include "beacon.h"\n#include "radio_slots.h"\nint c;\n',
         "Core/Src/hublogic.c":   '#include "hublogic.h"\n#include "phy.h"\nint d;\n',
-        "Core/Src/superframe.c": '#include "superframe.h"\n#include "timebase.h"\nint e;\n',
         "Core/Inc/exchange.h":   '#include <stdint.h>\n#include "radio_protocol.h"\n#include "sha256.h"\n',
-        "Core/Inc/beacon.h":     '#include <stdint.h>\n#include "superframe.h"\n',
-        "Core/Inc/superframe.h": '#include <stdint.h>\n#include "radio_slots.h"\n',
         "Core/Inc/hublogic.h":   "#include <stdint.h>\n",
         "Core/Inc/hop.h":        "#include <stdint.h>\n",
     }
@@ -87,9 +83,11 @@ PORTABLE_ARMS = [
     ("hal include in hublogic",
      portable_corpus(**{"Core__Src__hublogic_c":
                         '#include "hublogic.h"\n#include "stm32wlxx_hal.h"\nint d;\n'}), True),
-    ("stdio in beacon",
-     portable_corpus(**{"Core__Src__beacon_c":
-                        '#include "beacon.h"\n#include <stdio.h>\nint c;\n'}), True),
+    # The same rule the hub's suite now runs over beacon.c, which moved there.
+    ("stdio in exchange",
+     portable_corpus(**{"Core__Src__exchange_c":
+                        '#include <string.h>\n#include "exchange.h"\n'
+                        '#include <stdio.h>\nint a;\n'}), True),
     ("a listed file renamed away",
      portable_corpus(**{"Core__Src__hop_c": None}), True),
     ("tracked debt paid, entry left",

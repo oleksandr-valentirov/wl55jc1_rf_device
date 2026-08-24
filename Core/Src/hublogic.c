@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "hublogic.h"
+#include "gridmaster.h"
 #include "phy.h"
 #include "crypto.h"
 #include "exchange.h"
@@ -55,8 +56,9 @@ static hub_view_t v;
 static uint8_t  static_priv[X25519_PRIV_LEN], static_pub[X25519_PUB_LEN];
 static uint8_t  have_static;
 
-static uint32_t sf_start_us;
-static uint8_t  grid_started;
+/* The master role over the rule both firmwares compile. radio_devices_docs/radio/tdma.md */
+static gridmaster_t hm;
+static uint8_t  inited;
 
 static uint8_t  window_open;
 static uint8_t  beacon_done;         /* one beacon or invitation a superframe, at the offset */
@@ -76,10 +78,12 @@ static uint32_t get_le32(const uint8_t *p) {
 }
 
 static uint32_t offset_us(void) {
-    return phy_now_us() - sf_start_us;
+    return grid_offset(&hm.g, phy_now_us());
 }
 
-static int elapsed(uint32_t deadline_us) {
+/* On the PHY's clock, which is what this role's grid and every deadline below
+ * are taken from. radio_devices_docs/radio/phy-seam.md */
+static int phy_elapsed(uint32_t deadline_us) {
     return (int32_t)(phy_now_us() - deadline_us) >= 0;
 }
 
@@ -293,8 +297,10 @@ static void handle_frame(const uint8_t *rx, uint8_t len, int16_t rssi) {
 
 /* --- the grid ----------------------------------------------------------- */
 
+/* The delta, not an accumulator: the counter already counted every boundary.
+ * radio_devices_docs/radio/tdma.md */
 static void on_superframe(void) {
-    v.superframes++;
+    v.superframes = hm.g.counter - (uint32_t)WL55_HUB_SF_START;
     beacon_done = 0;
 }
 
@@ -374,35 +380,39 @@ static void stall(void) {
     if (WL55_HUB_STALL_US == 0u)
         return;
     until = phy_now_us() + WL55_HUB_STALL_US;
-    while (!elapsed(until))
+    while (!phy_elapsed(until))
         ;
 }
 
 void hub_init(void) {
     memset(&v, 0, sizeof(v));
     v.stall_us     = WL55_HUB_STALL_US;
-    v.frame_counter = WL55_HUB_SF_START;
+    /* Zeroed with the view: a fixture is re-initialised, and a started grid
+     * is what survives one. */
+    memset(&hm, 0, sizeof(hm));
+    hm.g.counter    = WL55_HUB_SF_START;
+    v.frame_counter = hm.g.counter;
     have_static = (crypto_x25519_keygen(static_priv, static_pub) == 0) ? 1u : 0u;
     if (phy_init() != 0)
         return;
-    sf_start_us  = phy_now_us();
-    grid_started = 1;
+    /* Here, not on the first pass: an offset needs an origin to be read against. */
+    (void)gridmaster_service(&hm, phy_now_us(), SUPERFRAME_US);
+    inited = 1;
 }
 
 void hub_service(void) {
-    if (!grid_started || !have_static)
+    if (!inited || !have_static)
         return;
 
-    if ((uint32_t)(phy_now_us() - sf_start_us) >= SUPERFRAME_US) {
-        sf_start_us += SUPERFRAME_US;
-        v.frame_counter++;
+    if (gridmaster_service(&hm, phy_now_us(), SUPERFRAME_US)) {
+        v.frame_counter = hm.g.counter;
         on_superframe();
     }
 
     window_service();
     poll_service();
 
-    if (ex_state != HUB_EX_IDLE && elapsed(ex_deadline_us)) {
+    if (ex_state != HUB_EX_IDLE && phy_elapsed(ex_deadline_us)) {
         v.ex_timeouts++;
         ex_reset();
     }

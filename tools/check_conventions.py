@@ -159,16 +159,15 @@ def check(files, only=None):
 PORTABLE = {
     "Core/Src/exchange.c":   set(),
     "Core/Src/hop.c":        {"hop.h", "radio_phy.h"},
-    "Core/Src/beacon.c":     {"beacon.h", "radio_phy.h", "radio_protocol.h", "radio_slots.h"},
-    "Core/Src/hublogic.c":   {"hublogic.h", "phy.h", "crypto.h", "exchange.h",
-                              "radio_protocol.h", "radio_slots.h"},
-    "Core/Src/superframe.c": {"superframe.h", "timebase.h"},
+    "Core/Src/hublogic.c":   {"hublogic.h", "gridmaster.h", "phy.h", "crypto.h",
+                              "exchange.h", "radio_protocol.h", "radio_slots.h"},
     "Core/Inc/exchange.h":   {"radio_protocol.h"},
-    "Core/Inc/beacon.h":     {"superframe.h", "radio_slots.h"},
-    "Core/Inc/superframe.h": {"radio_slots.h"},
     "Core/Inc/hublogic.h":   set(),
     "Core/Inc/hop.h":        set(),
 }
+# superframe and beacon left this tree for OpenHub/Common, guarded there.
+# radio_devices_docs/specs/03-roadmap.md
+
 # Freestanding only; <stdio.h> pulls newlib into a file with no part yet.
 PORTABLE_ANGLE = {"stddef.h", "stdint.h", "stdbool.h", "string.h", "limits.h"}
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.M)

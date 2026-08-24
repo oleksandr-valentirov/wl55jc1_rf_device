@@ -2,6 +2,11 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g \
          -I../Core/Inc -I../../OpenHub/Common/inc \
          -I../../OpenHub/Common/test/vectors -I.
 
+# The link layer is one set of sources and they live in the hub's tree until
+# phase 9 step 6. Deleting them there fails this suite.
+LINK_LAYER = ../../OpenHub/Common/src/grid.c ../../OpenHub/Common/src/superframe.c \
+             ../../OpenHub/Common/src/beacon.c
+
 TESTS = test_beacon test_exchange test_fingerprint test_hop test_hublogic \
         test_invite test_link test_period test_telemetry test_uptime
 
@@ -21,7 +26,7 @@ VECTORS = $(wildcard ../../OpenHub/Common/test/vectors/*.h) \
 
 $(TESTS): $(VECTORS)
 
-test_beacon: test_beacon.c host_timebase.c ../Core/Src/beacon.c ../Core/Src/superframe.c
+test_beacon: test_beacon.c host_timebase.c $(LINK_LAYER)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_telemetry: test_telemetry.c host_timebase.c ../Core/Src/telemetry.c
@@ -33,7 +38,7 @@ test_uptime: test_uptime.c host_timebase.c ../Core/Src/uptime.c
 test_hop: test_hop.c ../Core/Src/hop.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
-test_period: test_period.c host_timebase.c ../Core/Src/superframe.c
+test_period: test_period.c host_timebase.c $(LINK_LAYER)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_link: test_link.c
@@ -49,6 +54,7 @@ test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Co
 # is where a sealed frame is checked.
 test_hublogic: test_hublogic.c fake_phy.c host_crypto.c host_timebase.c \
                ../Core/Src/hublogic.c ../Core/Src/exchange.c ../Core/Src/sha256.c \
+               ../../OpenHub/Common/src/grid.c ../../OpenHub/Common/src/gridmaster.c \
                ../third_party/monocypher/monocypher.c
 	$(CC) $(CFLAGS) -I../third_party/monocypher -o $@ $(filter %.c,$^)
 

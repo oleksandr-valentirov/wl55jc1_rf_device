@@ -74,7 +74,7 @@ static superframe_t sframe;
 static quiesce_t quiesce;
 
 static void time_start(void) {
-    if (sframe.running)
+    if (sframe.g.running)
         return;
     /* Zero: a booted device has no opinion and the first beacon gives it one.
      * radio_devices_docs/wl55_device/radio/timebase.md */
@@ -466,7 +466,7 @@ static int recover_take(const uint8_t *rx, const radio_rx_info_t *info, uint8_t 
     if (aligned != before)
         tlm_emit(TLM_SYNC_JUMP, aligned, before, (uint32_t)(int32_t)(aligned - before), 0u);
     /* Predicting the next beacon beats holding a channel another cycle. */
-    if (recover_state == RECOVER_PARK && sframe.running && sframe.aligned) {
+    if (recover_state == RECOVER_PARK && sframe.g.running && sframe.aligned) {
         recover_state = RECOVER_SEARCH;
         recover_search_tries = 0;
     }
@@ -485,7 +485,7 @@ static void recover_search(void) {
     if (uncert > RECOVER_UNCERT_MAX_US)
         uncert = RECOVER_UNCERT_MAX_US;
 
-    uint32_t boundary = sframe.next_boundary_us;
+    uint32_t boundary = (sframe.g.start + sframe.g.period);
     if ((int32_t)(boundary - micros()) > (int32_t)(REPORT_BOUNDARY_LEAD_US + uncert))
         return;
     if (hop_channel_live(sf, &hop) != 0 || radio_configure((grid = hop_to_grid(hop))) != 0)
@@ -518,7 +518,7 @@ static void recover_park(void) {
         if (radio_rng_word(&r) != 0)
             r = join_res.dev_id_be;
         recover_park_grid = hop_to_grid((uint8_t)(r % RADIO_HOP_COUNT));
-        tlm_emit(TLM_REC_PARK, sframe.counter, recover_park_grid,
+        tlm_emit(TLM_REC_PARK, sframe.g.counter, recover_park_grid,
                  radio_slot_hz(recover_park_grid), 0u);
     }
     /* Re-tuned every pass: a park drifted off its channel waits forever. */
@@ -542,7 +542,7 @@ void recover_service(void) {
     /* One beacon aligns and leaves the stub period: aligned and unusable. */
     if (!recover_park_forced && superframe_can_schedule(&sframe)) {
         if (recover_state != RECOVER_IDLE)
-            tlm_emit(TLM_REC_EXIT, sframe.counter, sframe.measured_us, 0u, 0u);
+            tlm_emit(TLM_REC_EXIT, sframe.g.counter, sframe.measured_us, 0u, 0u);
         recover_state = RECOVER_IDLE;
         recover_search_tries = 0;
         return;
@@ -553,10 +553,10 @@ void recover_service(void) {
             return;
         recover_entered++;
         recover_search_tries = 0;
-        tlm_emit(TLM_REC_ENTER, sframe.counter,
-                 (sframe.measured_us != 0u && sframe.running) ? 1u : 2u, 0u, 0u);
+        tlm_emit(TLM_REC_ENTER, sframe.g.counter,
+                 (sframe.measured_us != 0u && sframe.g.running) ? 1u : 2u, 0u, 0u);
         /* No measured period is nothing to extrapolate from. */
-        if (sframe.measured_us != 0u && sframe.running) {
+        if (sframe.measured_us != 0u && sframe.g.running) {
             recover_state = RECOVER_SEARCH;
         } else {
             recover_state = RECOVER_PARK;
@@ -604,7 +604,7 @@ void report_service(void) {
         uncert = REPORT_UNCERT_MAX_US;
 
     /* Only near a boundary, so the superloop is not blocked waiting for one. */
-    uint32_t boundary = sframe.next_boundary_us;
+    uint32_t boundary = (sframe.g.start + sframe.g.period);
     if ((int32_t)(boundary - micros()) > (int32_t)(REPORT_BOUNDARY_LEAD_US + uncert))
         return;
 

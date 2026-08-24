@@ -135,8 +135,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/vectors.c
     Core/Src/join.c
     Core/Src/store.c
-    Core/Src/superframe.c
-    Core/Src/beacon.c
     Core/Src/hop.c
     Core/Src/hop_prf.c
     Core/Src/phy_sx126x.c
@@ -147,6 +145,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     third_party/monocypher/monocypher.c
     # The RF switch is BSP territory: the .ioc pulls in the nucleo half only.
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c
+)
+
+# The link layer, one set of sources; deleting them there fails this build.
+# radio_devices_docs/specs/03-roadmap.md
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    ${OPENHUB_PATH}/Common/src/grid.c
+    ${OPENHUB_PATH}/Common/src/gridmaster.c
+    ${OPENHUB_PATH}/Common/src/superframe.c
+    ${OPENHUB_PATH}/Common/src/beacon.c
 )
 
 # The hub's hop.c under renamed symbols, dev builds only. ADR-0029 decision 5.
