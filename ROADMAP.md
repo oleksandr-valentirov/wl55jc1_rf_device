@@ -675,7 +675,34 @@ Only visible because the records are timestamped; a counter shows the same
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
 
-### 83. `vectors_report` compares two constant tables and never runs `hop.c` — `debt` `built 2026-08-24, not yet run on the board`
+### 83. `vectors_report` compares two constant tables and never runs `hop.c` — `debt` `closed 2026-08-25, verified on node B with its control`
+
+**Run on node B and made to refuse before it was read.** Clean build:
+`hop deck   drawn by this build  rc 0`.
+
+**Its control had to differ from the hub's.** On this side the old line compares
+two tables of *constants*, so tampering a vector moves both lines and shows
+nothing. What that comparison cannot see by construction is a defect in the
+**code**, so the mutation was `hop.c` — the cycle written little-endian into the
+PRF input, every vector byte untouched:
+
+    hop local  e1a8d4a2e3e18fad  agrees
+    hop deck   MISMATCH  rc -5
+
+**`rc -5` is cycle 1, not cycle 0, and that is the staged code earning its place
+on its first real use.** Cycle 0's counter block is all zeroes and reads the same
+under either endian convention — the trap `tools/gen_hop_vectors.py` documents and
+pins cycle 1 against. A flag would have said "wrong"; the stage named the layer,
+and confirmed that documented trap on silicon rather than on a host.
+
+**Confirmed rather than assumed**: identity `FEF91007` gen 1 and the pairing —
+hub `33442211`, net 0001, slot 0, every 8 — survived all three flashes, because
+the store sits outside the app region a `-w elf` writes.
+
+Restored to `rc 0`. Node B returned to the state it was in before the run —
+`paired yes, stale, reports 0`, which is what it read at baseline; it was not
+reporting before this and is not now.
+
 
 **Built.** `vectors.c` gained `hop_deck_kat()`: `hop_init(HV_HOP_KEY, HOP_VEC_COUNT)`
 and `hop_channel` over `HV_DECK0`, `HV_DECK1` and all ten `HV_SAMPLE_SF`, through
