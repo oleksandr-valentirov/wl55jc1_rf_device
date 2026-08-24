@@ -148,6 +148,16 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c
 )
 
+# The hub's hop.c under renamed symbols, dev builds only. ADR-0029 decision 5.
+# radio_devices_docs/radio/hopping.md
+if(WL55_DEV_COMMANDS)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE Core/Src/hopref.c)
+    set_source_files_properties(Core/Src/hopref.c PROPERTIES
+        COMPILE_OPTIONS "-iquote${SHARED_PROTOCOL}"
+        COMPILE_DEFINITIONS
+            "OPENHUB_HOP_H=\"${SHARED_PROTOCOL}/hop.h\";OPENHUB_HOP_C=\"${OPENHUB_PATH}/Common/src/hop.c\"")
+endif()
+
 # -O0 costs this file 371 ms a scalar multiplication against the PKA's 103 ms.
 # radio_devices_docs/radio/decisions/0025-x25519-replaces-p256.md
 set_source_files_properties(third_party/monocypher/monocypher.c

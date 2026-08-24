@@ -19,14 +19,18 @@ sentence, so nothing anywhere disagrees when it goes stale. Name the file, the
 symbol, the commit or the ADR instead; those fail loudly when they move. The `hub`
 items below are the exception and are hints rather than identifiers.
 
-**Cleaned twice.** The first pass retired eight closed entries and moved the
+**Cleaned three times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
 and `testing/bench-harness.md` under `wl55_device/`. The second retired item 34,
 the hub's front end, which had been closed as an investigation and kept only as a
 pointer; its measurement is on `open_hub/radio/configuration.md` and item 4 now
 carries the one line about it that this queue needs. **A pointer is not an open
-item**, and keeping one here is how a closed investigation gets re-opened.
+item**, and keeping one here is how a closed investigation gets re-opened. The
+third retired item 83, the hop deck KAT: it was verified on node B with its own
+control on 2026-08-24 and the reasoning worth keeping is on
+`radio/hopping.md` and `wl55_device/security/self-tests.md`. **A closed item that
+stays because its story is good is the same failure in a nicer costume.**
 
 **Status words**
 
@@ -675,92 +679,39 @@ Only visible because the records are timestamped; a counter shows the same
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
 
-### 83. `vectors_report` compares two constant tables and never runs `hop.c` — `debt` `closed 2026-08-25, verified on node B with its control`
+### 84. This tree compiles the hub's `hop.c`, and that has an expiry — `debt` `contract`
 
-**Run on node B and made to refuse before it was read.** Clean build:
-`hop deck   drawn by this build  rc 0`.
+**Deliberate, and the first time either tree has compiled the other's `.c`.**
+`Core/Src/hopref.c` includes `OpenHub/Common/src/hop.c` by absolute path under
+renamed symbols — `-iquote` puts the hub's `Common/inc` ahead of `Core/Inc`, since
+the two `hop.h` collide by filename. Nothing is copied, so it cannot drift.
 
-**Its control had to differ from the hub's.** On this side the old line compares
-two tables of *constants*, so tampering a vector moves both lines and shows
-nothing. What that comparison cannot see by construction is a defect in the
-**code**, so the mutation was `hop.c` — the cycle written little-endian into the
-PRF input, every vector byte untouched:
+**Behind `WL55_DEV_COMMANDS`, off in the product image, and in no test target**,
+so `make -C test check` and the product build are untouched and a device test run
+cannot fail for a reason only the hub session may fix. That was the objection that
+deleted the ctypes harness on 2026-08-24, and it is answered by the gate rather
+than argued away.
 
-    hop local  e1a8d4a2e3e18fad  agrees
-    hop deck   MISMATCH  rc -5
+**What it buys is the only check that can say the absorption changed nothing.**
+`vectors` reports the hub's `hop.c` drawing the published deck through this part's
+CRYP, and `hopsweep <cycles> [start]` walks whole cycles comparing both
+implementations channel by channel, with every cycle checked to be a permutation.
+Measured 2026-08-24 on both boards: 14 000 channels from cycle 0 and 5 600 from
+cycle 153 391 000, all agreeing, and the sweep made red first with a wrong PRF.
+That is what [ADR-0030](../radio_devices_docs/radio/decisions/0030-radio-stack-is-the-link-layer-and-the-session-layer-is-a-separate-consumer.md)
+decision 6 rests on.
 
-**`rc -5` is cycle 1, not cycle 0, and that is the staged code earning its place
-on its first real use.** Cycle 0's counter block is all zeroes and reads the same
-under either endian convention — the trap `tools/gen_hop_vectors.py` documents and
-pins cycle 1 against. A flag would have said "wrong"; the stage named the layer,
-and confirmed that documented trap on silicon rather than on a host.
+**It closes when the absorption lands**, not before and not much after: once both
+firmwares link one `hop.c` there is one implementation, no equivalence question,
+and this file is a second copy of the thing it was comparing. **Delete it in the
+same commit that makes the library the only `hop.c`** — a comparison of a thing
+with itself is the vacuous form, and it would stay green forever.
 
-**Confirmed rather than assumed**: identity `FEF91007` gen 1 and the pairing —
-hub `33442211`, net 0001, slot 0, every 8 — survived all three flashes, because
-the store sits outside the app region a `-w elf` writes.
+**The guard is a convention and not a mechanism**, which is the honest state and
+the reason this entry exists rather than a comment: nothing fails if
+`WL55_DEV_COMMANDS` is turned on in a build that should not have it.
 
-Restored to `rc 0`. Node B returned to the state it was in before the run —
-`paired yes, stale, reports 0`, which is what it read at baseline; it was not
-reporting before this and is not now.
-
-
-**Built.** `vectors.c` gained `hop_deck_kat()`: `hop_init(HV_HOP_KEY, HOP_VEC_COUNT)`
-and `hop_channel` over `HV_DECK0`, `HV_DECK1` and all ten `HV_SAMPLE_SF`, through
-this part's real CRYP. `vectors_report_t` carries `hop_deck_rc` — a staged code,
-not a flag, so a failure names its layer — and the `vectors` console command
-prints it beside the digests. A `_Static_assert` ties `HOP_VECTORS_COUNT` to
-`RADIO_HOP_COUNT`.
-
-**It is deliberately not in `hop.c`.** A vector header included there would be
-refused by item 76's guard, which is the guard working rather than an obstacle:
-the library-to-be stays free of its own test data.
-
-| | on this board before | after |
-|---|---|---|
-| what ran | `memcmp` over six constant tables | `hop.c`, keyed, over 66 drawn channels |
-| assertions against `hop_v1` | **0 that execute the code** | **66** — 56 deck slots + 10 samples |
-| samples past cycle 1 | 0 | **4**, which no host suite can reach |
-| cost | — | **+512 B** text and rodata |
-
-**Verified on a host proxy, and not yet on the board.** `Core/Src/hop.c` was built
-as a shared object with `crypto_aes_ecb_block` supplied by `cryptography` — a
-real AES rather than the replay `test/test_hop.c` defines — and it reproduces
-**56 of 56 deck slots and 10 of 10 samples**. Two mutations were refused: the
-cycle written little-endian instead of big, and the shuffle stopping one element
-short. The four samples past cycle 1 have never been executed by any suite in
-either tree, because both replay the pinned streams.
-
-**What is left is the board**, which needs a flash of a paired node.
-
-
-`vectors_report()` checks `vec_hop_key`, `vec_hop_prf_in`, `vec_hop_prf_out`,
-`vec_hop_deck_cycle0`, `vec_hop_deck_cycle1` and `vec_aes_fips_out` against the
-hub's `HV_*`. **Every one of those is a constant on both sides** — two arrays from
-two generators. `hop_init` and `hop_channel` are never called.
-
-The file's own comment carries the lesson one level down: *values, not digests:
-two digests from one header agree by construction.* **The same objection applies
-one level up** — two tables of constants agreeing says the generators agree, and
-says nothing about the code that runs.
-
-Both `hop_vectors.h` and `hop_v1.h` are already linked into this firmware, so the
-decks are on the board and nothing executes against them. On the hub the same gap
-exists one layer higher — its `hop_prf_selftest` pins the PRF block and stops
-there, its item 81.
-
-**The air is what covers this today, and it is about to stop covering it.** Two
-independent implementations make a deck bug total silence; one shared
-implementation makes it the same wrong channel at both ends with a working link.
-[ADR-0029](../radio_devices_docs/radio/decisions/0029-the-library-declares-four-backends-and-absorbs-no-control.md)
-decision 5 is conditional on this.
-
-The pattern is already here: `crypto_gcm_kat`, `crypto_x25519_kat`,
-`crypto_wire_kat` and `crypto_pair_kat` all run on the silicon and reach the
-console. A `hop_kat` beside them runs the deck under this part's real toolchain
-and optimisation level — which is also the half of ADR-0025's lesson a host
-reference cannot carry.
-
-`radio_devices_docs/wl55_device/radio/hopping.md`.
+`radio_devices_docs/radio/hopping.md`.
 
 ### 82. `exchange.h` reaches an implementation, and every include listing has missed it — `contract`
 

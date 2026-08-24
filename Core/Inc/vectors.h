@@ -11,7 +11,24 @@ typedef struct {
     const char *hop_local;
     uint8_t     hop_local_matches_shared;
     int8_t      hop_deck_rc;   /**< 0 when this board's hop.c drew the published deck */
+#if WL55_DEV_COMMANDS
+    int8_t      hop_ref_rc;    /**< 0 when the hub's hop.c drew the same deck here */
+    int8_t      hop_ref_ctl_rc;/**< non-zero required: a wrong PRF must be refused */
+#endif
 } vectors_report_t;
 
 /** @brief Collects what this binary was built against, for reading aloud. */
 void vectors_report(vectors_report_t *out);
+
+#if WL55_DEV_COMMANDS
+#include "hopref.h"
+
+/** @brief The published hop key, so a sweep keys both implementations alike. */
+const uint8_t *vectors_hop_key(void);
+
+/** @brief This part's real AES, in the shape the hub's hop.c asks for. */
+hopref_prf_fn vectors_ref_prf(void);
+
+/** @brief The word-swapped model, so the sweep's negative case can be run. */
+hopref_prf_fn vectors_ref_prf_wrong(void);
+#endif
