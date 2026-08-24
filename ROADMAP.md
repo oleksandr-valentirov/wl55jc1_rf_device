@@ -675,7 +675,36 @@ Only visible because the records are timestamped; a counter shows the same
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
 
-### 83. `vectors_report` compares two constant tables and never runs `hop.c` — `debt`
+### 83. `vectors_report` compares two constant tables and never runs `hop.c` — `debt` `built 2026-08-24, not yet run on the board`
+
+**Built.** `vectors.c` gained `hop_deck_kat()`: `hop_init(HV_HOP_KEY, HOP_VEC_COUNT)`
+and `hop_channel` over `HV_DECK0`, `HV_DECK1` and all ten `HV_SAMPLE_SF`, through
+this part's real CRYP. `vectors_report_t` carries `hop_deck_rc` — a staged code,
+not a flag, so a failure names its layer — and the `vectors` console command
+prints it beside the digests. A `_Static_assert` ties `HOP_VECTORS_COUNT` to
+`RADIO_HOP_COUNT`.
+
+**It is deliberately not in `hop.c`.** A vector header included there would be
+refused by item 76's guard, which is the guard working rather than an obstacle:
+the library-to-be stays free of its own test data.
+
+| | on this board before | after |
+|---|---|---|
+| what ran | `memcmp` over six constant tables | `hop.c`, keyed, over 66 drawn channels |
+| assertions against `hop_v1` | **0 that execute the code** | **66** — 56 deck slots + 10 samples |
+| samples past cycle 1 | 0 | **4**, which no host suite can reach |
+| cost | — | **+512 B** text and rodata |
+
+**Verified on a host proxy, and not yet on the board.** `Core/Src/hop.c` was built
+as a shared object with `crypto_aes_ecb_block` supplied by `cryptography` — a
+real AES rather than the replay `test/test_hop.c` defines — and it reproduces
+**56 of 56 deck slots and 10 of 10 samples**. Two mutations were refused: the
+cycle written little-endian instead of big, and the shuffle stopping one element
+short. The four samples past cycle 1 have never been executed by any suite in
+either tree, because both replay the pinned streams.
+
+**What is left is the board**, which needs a flash of a paired node.
+
 
 `vectors_report()` checks `vec_hop_key`, `vec_hop_prf_in`, `vec_hop_prf_out`,
 `vec_hop_deck_cycle0`, `vec_hop_deck_cycle1` and `vec_aes_fips_out` against the

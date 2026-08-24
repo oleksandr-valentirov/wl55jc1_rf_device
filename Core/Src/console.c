@@ -182,6 +182,8 @@ static void show_vectors(void) {
     out("pair_v4 %s\r\nwire_v4 %s\r\n", v.pair_v4, v.wire_v4);
     out("hop shared %s\r\nhop local  %s  %s\r\n", v.hop_shared, v.hop_local,
         v.hop_local_matches_shared ? "agrees" : "DISAGREES");
+    out("hop deck   %s  rc %d\r\n",
+        v.hop_deck_rc == 0 ? "drawn by this build" : "MISMATCH", v.hop_deck_rc);
 }
 
 static void show_load(void) {

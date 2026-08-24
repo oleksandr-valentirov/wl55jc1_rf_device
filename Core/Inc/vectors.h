@@ -10,6 +10,7 @@ typedef struct {
     const char *hop_shared;
     const char *hop_local;
     uint8_t     hop_local_matches_shared;
+    int8_t      hop_deck_rc;   /**< 0 when this board's hop.c drew the published deck */
 } vectors_report_t;
 
 /** @brief Collects what this binary was built against, for reading aloud. */
