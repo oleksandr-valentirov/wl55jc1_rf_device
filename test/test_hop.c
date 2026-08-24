@@ -91,16 +91,26 @@ int main(void) {
     check("cycle 1 differs from cycle 0", memcmp(HV_DECK0, HV_DECK1, 28) != 0);
 
     int samples_ok = 1;
+    int samples_checked = 0, samples_beyond = 0;
     for (int i = 0; i < 10; i++) {
         uint32_t sf = HV_SAMPLE_SF[i];
         /* Only cycles 0 and 1 have a published stream; the rest need the real PRF.
          * radio_devices_docs/wl55_device/testing/host-tests.md */
-        if (sf / HOP_VEC_COUNT > 1u)
+        if (sf / HOP_VEC_COUNT > 1u) {
+            samples_beyond++;
             continue;
+        }
         if (hop_channel(&ctx, sf, &ch) != 0 || ch != HV_SAMPLE_CH[i])
             samples_ok = 0;
+        samples_checked++;
     }
+
+    /* The denominator, so a green line is not read as the whole sample set. */
+    printf("  samples %d of 10 checked; %d past cycle 1 need a real AES,"
+           " which is the board's hop_deck_kat\n",
+           samples_checked, samples_beyond);
     check("published samples inside the replayed cycles", samples_ok);
+    check("the sample check had a population at all", samples_checked > 0);
 
     /* Park-and-wait's bound is the permutation, not an assumption about it.
      * radio_devices_docs/radio/joining.md */
