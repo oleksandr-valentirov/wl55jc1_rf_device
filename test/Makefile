@@ -2,8 +2,8 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g \
          -I../Core/Inc -I../../OpenHub/Common/inc \
          -I../../OpenHub/Common/test/vectors -I.
 
-TESTS = test_beacon test_exchange test_fingerprint test_hop test_invite test_link \
-        test_period test_telemetry test_uptime
+TESTS = test_beacon test_exchange test_fingerprint test_hop test_hublogic \
+        test_invite test_link test_period test_telemetry test_uptime
 
 # A change to a vector header must rebuild the tests that check it. Without
 # this the binaries stayed up to date against their own sources while the
@@ -44,6 +44,13 @@ test_exchange: test_exchange.c host_timebase.c ../Core/Src/exchange.c ../Core/Sr
 
 test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Core/Src/sha256.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
+
+# The curve is real and the AEAD is not; host_crypto.c says why, and test_link
+# is where a sealed frame is checked.
+test_hublogic: test_hublogic.c fake_phy.c host_crypto.c host_timebase.c \
+               ../Core/Src/hublogic.c ../Core/Src/exchange.c ../Core/Src/sha256.c \
+               ../third_party/monocypher/monocypher.c
+	$(CC) $(CFLAGS) -I../third_party/monocypher -o $@ $(filter %.c,$^)
 
 # The curve is stubbed to abort rather than linked: see host_curve_absent.c.
 test_invite: test_invite.c host_timebase.c host_curve_absent.c ../Core/Src/pair_init.c ../Core/Src/sha256.c

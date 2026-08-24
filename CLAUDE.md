@@ -130,9 +130,23 @@ today (`ROADMAP.md` item 77). Build it into a **separate directory**, because
 the product image must stay the one that gets flashed by habit:
 
 ```bash
-cmake -S . -B build/Dev -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWL55_DEV_COMMANDS=ON
+T=$PWD/cmake/gcc-arm-none-eabi.cmake      # the presets supply this; a bare -B does not
+cmake -S . -B build/Dev -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWL55_DEV_COMMANDS=ON \
+      -DCMAKE_TOOLCHAIN_FILE=$T
 cmake --build build/Dev
 ```
+
+**`-DWL55_ROLE=HUB` builds the hub role**, the same protocol above `phy.h` with
+this board's SX126x under it, and it takes the same toolchain argument:
+
+```bash
+cmake -S . -B build/HubRole -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWL55_ROLE=HUB \
+      -DCMAKE_TOOLCHAIN_FILE=$T
+cmake --build build/HubRole
+```
+
+Its logic is `Core/Src/hublogic.c` and it is host-tested by `test_hublogic`, so
+a change to the enrolment scheduler is checked on a PC before it reaches a board.
 
 **`state` names the regime in both builds** — `opps 1 of 3  k=0  slot 2` — so a
 delivery figure never has to have its `k` inferred from a duty cycle again. It

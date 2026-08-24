@@ -952,6 +952,51 @@ region model — `ex_due_frame = ex_req_frame + 1`, `RADIO_EX_RSP_DUE`,
 confirm leg is chased in its own source and its own counters. Item 60 carries that
 and does not wait on this.
 
+#### Built 2026-08-24, and the stated cause does not reproduce
+
+`test/test_hublogic.c`, 53 checks, `hublogic.c` driven through a fake PHY with a
+device on the other side that keeps ADR-0026's timing. **The exchange completes.**
+Request seen, response sent, confirmation heard, grant sent, paired, and no
+timeout - against a device that holds its confirmation to
+`RADIO_PAIR_CONF_REGION` past the invitation, which is the thing this entry said
+`hublogic.c` knows nothing about.
+
+**The negative is a real negative and not an untested path.** Mutating
+`HUB_EX_TIMEOUT_US` from two superframes to one turns the accept, the pairing and
+the held-time check red, so the suite does catch this class of defect. It is not
+present in this code: the deadline is armed from the *response*, and the response
+is only ~41 ms after the invitation, so two superframes from there still covers a
+confirmation due two superframes after the invitation.
+
+**Two numbers replace the argument, and the second is the binding one:**
+
+| | measured |
+|---|---|
+| deadline slack - how late the confirmation may be before the *timeout* refuses it | **41 040 us**, which is exactly this hub's invitation-to-response turnaround |
+| guard band - how late before the *window* has already closed under it | **106 660 us** past the region |
+
+The window is the constraint, not the timeout. A confirmation later than ~107 ms
+past its region point lands where the hub has put the part in standby, and is
+**never heard at all** - which is the only shape that reproduces this entry's
+bench signature: request seen, response sent, `conf seen 0`, timed out. Later
+still is heard again, in the next superframe's window, so *later* is not a
+diagnosis on its own; it is a band and not a cliff.
+
+**So the eleven-of-eleven is bounded rather than explained.** Either the device's
+confirmation was more than ~107 ms past its nominal region point, or it was never
+transmitted. That run recorded the hub's counters only; `stats.conf_sent` and
+`stats.invite_to_conf_us` on the node settle it in one reading, and until it is
+re-run this entry has a symptom and no cause.
+
+**A control that says why ADR-0026 exists, now reproducible in a second.**
+Pre-ADR-0026 timing - the confirmation 105 ms after the response - is *also* lost,
+in the dead zone before the next window opens. That is hub item 60's original
+mechanism, on a PC, without a board.
+
+**No change to `hublogic.c`.** Re-anchoring the deadline to the invitation would
+be principled and would buy nothing: the window closes first either way, and it
+would put an untested change on the path that is about to be re-measured.
+
 `radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md`,
 `bench/runs/2026-08-23-3/RESULTS.md`. Related: item 80, the backend under this
 seam has no host test either.
