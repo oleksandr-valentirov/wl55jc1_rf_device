@@ -542,6 +542,25 @@ every frame to CRC, so filter width is not the deciding term in either direction
 
 `radio_devices_docs/radio/phy.md`.
 
+### 76. The library-to-be lives here and nothing stops it growing a HAL — `debt`
+
+`hublogic.c`, `exchange.c`, `beacon.c`, `superframe.c` and `hop.c` include only
+`phy.h`, `crypto.h`, `timebase.h` and the shared contract headers. **That is what
+makes them the library** [ADR-0028](../radio_devices_docs/radio/decisions/0028-the-radio-is-a-library-and-the-region-is-a-compile-time-profile.md)
+extracts, and it is a property nothing currently checks.
+
+One `#include "stm32wlxx_hal.h"` added to any of them for a quick timestamp costs
+the extraction its whole argument, and it would compile, link, pass every host
+test and be found months later by whoever tries to build these files for another
+part. **A property that is load-bearing and unchecked is the class this project
+has been bitten by most.**
+
+The check is cheap and mechanical — the include list of five files — and
+`tools/check_conventions.sh` is where it belongs, beside the rules that are
+already enforced rather than remembered.
+
+`radio_devices_docs/radio/phy-seam.md`.
+
 ### 28. Recovery's predicted tier is unusable cold, not useless — `debt`
 
 Re-acquisition has two tiers: with a measured period it predicts the next
