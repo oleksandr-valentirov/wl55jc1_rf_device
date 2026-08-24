@@ -3,18 +3,18 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g \
          -I../radio_stack/test/vectors -I. \
          -DRADIO_PROFILE=RADIO_PROFILE_ASBUILT
 
-# The library, one set of sources, in the submodule. Deleting any of them there
-# fails this suite. radio_devices_docs/specs/03-roadmap.md
-LINK_LAYER = ../radio_stack/src/grid.c ../radio_stack/src/superframe.c \
-             ../radio_stack/src/beacon.c
+# The library's own tests live in radio_stack/test and run under both profiles.
+# What is here is this tree's: the fixture, the store, the console's readings,
+# and the one comparison of the reference deck against the library's.
+# radio_devices_docs/specs/03-roadmap.md
 
-# The session layer's schedule, and this side's supply of the two hash
-# operations it declares.
+# This side's supply of the schedule's two hash operations, and the schedule the
+# fixture drives. Deleting exchange.c in the submodule fails this suite.
 SESSION_LAYER = ../radio_stack/src/exchange.c ../Core/Src/kdf.c \
                 ../Core/Src/sha256.c
 
-TESTS = test_beacon test_exchange test_fingerprint test_hop test_hublogic \
-        test_invite test_link test_period test_telemetry test_uptime
+TESTS = test_fingerprint test_hop test_hublogic test_invite test_link \
+        test_telemetry test_uptime
 
 # A change to a vector header must rebuild the tests that check it. Without
 # this the binaries stayed up to date against their own sources while the
@@ -33,9 +33,6 @@ VECTORS = $(wildcard ../radio_stack/test/vectors/*.h) \
 
 $(TESTS): $(VECTORS)
 
-test_beacon: test_beacon.c host_timebase.c $(LINK_LAYER)
-	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
-
 test_telemetry: test_telemetry.c host_timebase.c ../Core/Src/telemetry.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
@@ -47,13 +44,7 @@ test_uptime: test_uptime.c host_timebase.c ../Core/Src/uptime.c
 test_hop: test_hop.c hop_reference.c ../radio_stack/src/hop.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
-test_period: test_period.c host_timebase.c $(LINK_LAYER)
-	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
-
 test_link: test_link.c
-	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
-
-test_exchange: test_exchange.c host_timebase.c $(SESSION_LAYER)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Core/Src/sha256.c
