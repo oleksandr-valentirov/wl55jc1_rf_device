@@ -131,7 +131,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/sha256.c
     Core/Src/frame.c
     Core/Src/pairing.c
-    Core/Src/exchange.c
+    Core/Src/kdf.c
     Core/Src/vectors.c
     Core/Src/join.c
     Core/Src/store.c
@@ -147,13 +147,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c
 )
 
-# The link layer, one set of sources; deleting them there fails this build.
+# The link layer and the schedule: deleting them there fails this build.
 # radio_devices_docs/specs/03-roadmap.md
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${OPENHUB_PATH}/Common/src/grid.c
     ${OPENHUB_PATH}/Common/src/gridmaster.c
     ${OPENHUB_PATH}/Common/src/superframe.c
     ${OPENHUB_PATH}/Common/src/beacon.c
+    ${OPENHUB_PATH}/Common/src/exchange.c
 )
 
 # The hub's hop.c under renamed symbols, dev builds only. ADR-0029 decision 5.

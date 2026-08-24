@@ -7,6 +7,11 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g \
 LINK_LAYER = ../../OpenHub/Common/src/grid.c ../../OpenHub/Common/src/superframe.c \
              ../../OpenHub/Common/src/beacon.c
 
+# The session layer's schedule, and this side's supply of the two hash
+# operations it declares. Same rule: deleting exchange.c there fails this suite.
+SESSION_LAYER = ../../OpenHub/Common/src/exchange.c ../Core/Src/kdf.c \
+                ../Core/Src/sha256.c
+
 TESTS = test_beacon test_exchange test_fingerprint test_hop test_hublogic \
         test_invite test_link test_period test_telemetry test_uptime
 
@@ -44,7 +49,7 @@ test_period: test_period.c host_timebase.c $(LINK_LAYER)
 test_link: test_link.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
-test_exchange: test_exchange.c host_timebase.c ../Core/Src/exchange.c ../Core/Src/sha256.c
+test_exchange: test_exchange.c host_timebase.c $(SESSION_LAYER)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Core/Src/sha256.c
@@ -53,7 +58,7 @@ test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Co
 # The curve is real and the AEAD is not; host_crypto.c says why, and test_link
 # is where a sealed frame is checked.
 test_hublogic: test_hublogic.c fake_phy.c host_crypto.c host_timebase.c \
-               ../Core/Src/hublogic.c ../Core/Src/exchange.c ../Core/Src/sha256.c \
+               ../Core/Src/hublogic.c $(SESSION_LAYER) \
                ../../OpenHub/Common/src/grid.c ../../OpenHub/Common/src/gridmaster.c \
                ../third_party/monocypher/monocypher.c
 	$(CC) $(CFLAGS) -I../third_party/monocypher -o $@ $(filter %.c,$^)

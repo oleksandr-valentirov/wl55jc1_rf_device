@@ -57,13 +57,11 @@ BLOCK_ARMS = [
 
 
 
-# The ten files check_portable pins, with allowed includes. Item 76.
+# The files check_portable still pins here, with allowed includes. Item 76.
 def portable_corpus(**edits):
     files = {
-        "Core/Src/exchange.c":   '#include <string.h>\n#include "exchange.h"\nint a;\n',
         "Core/Src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\nint b;\n',
         "Core/Src/hublogic.c":   '#include "hublogic.h"\n#include "phy.h"\nint d;\n',
-        "Core/Inc/exchange.h":   '#include <stdint.h>\n#include "radio_protocol.h"\n#include "sha256.h"\n',
         "Core/Inc/hublogic.h":   "#include <stdint.h>\n",
         "Core/Inc/hop.h":        "#include <stdint.h>\n",
     }
@@ -83,16 +81,13 @@ PORTABLE_ARMS = [
     ("hal include in hublogic",
      portable_corpus(**{"Core__Src__hublogic_c":
                         '#include "hublogic.h"\n#include "stm32wlxx_hal.h"\nint d;\n'}), True),
-    # The same rule the hub's suite now runs over beacon.c, which moved there.
-    ("stdio in exchange",
-     portable_corpus(**{"Core__Src__exchange_c":
-                        '#include <string.h>\n#include "exchange.h"\n'
-                        '#include <stdio.h>\nint a;\n'}), True),
+    # The same rule the hub's suite now runs over the files that moved there.
+    ("stdio in hublogic",
+     portable_corpus(**{"Core__Src__hublogic_c":
+                        '#include "hublogic.h"\n#include "phy.h"\n'
+                        '#include <stdio.h>\nint d;\n'}), True),
     ("a listed file renamed away",
      portable_corpus(**{"Core__Src__hop_c": None}), True),
-    ("tracked debt paid, entry left",
-     portable_corpus(**{"Core__Inc__exchange_h":
-                        '#include <stdint.h>\n#include "radio_protocol.h"\n'}), True),
     # The PRF is injected now, so crypto.h coming back is a regression. ADR-0030.
     ("crypto back in hop.c",
      portable_corpus(**{"Core__Src__hop_c":

@@ -71,6 +71,10 @@ typedef struct device_view {
  *
  * The only route that does not need a debug probe. ROADMAP item 58.
  */
+/** @brief Reopens the enrolment window without touching the stored pairing.
+ *  radio_devices_docs/wl55_device/radio/pairing.md */
+void device_reopen_enrol(void);
+
 int device_release_pairing(void);
 
 #if WL55_DEV_COMMANDS

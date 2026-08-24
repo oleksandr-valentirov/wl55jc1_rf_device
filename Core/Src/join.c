@@ -175,9 +175,14 @@ static int handle_response(pairing_ctx_t *p, join_result_t *res,
     exchange_salt(p->hub_id, p->dev_id, req_superframe, p->dev_nonce, salt);
     exchange_transcript(p->hub_id, p->dev_id, req_superframe, p->dev_nonce,
                         res->hub_static, eph_c, p->pub, transcript);
-    exchange_derive(z1, z2, salt, transcript, keys);
+    const int drc = exchange_derive(z1, z2, salt, transcript, keys);
     memset(z1, 0, sizeof(z1));
     memset(z2, 0, sizeof(z2));
+    if (drc != 0) {
+        /* A zeroed key set would fail the compare below anyway; this names it. */
+        stats.rsp_derive_bad++;
+        return -8;
+    }
 
     if (!exchange_confirm_equal(confirm, keys->confirm_hub)) {
         /* Nothing goes out after this fails, or a relay gets the device talking to it.

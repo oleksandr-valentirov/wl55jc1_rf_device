@@ -157,26 +157,24 @@ def check(files, only=None):
 
 # The library-to-be's include list, pinned per file. ROADMAP items 76 and 82.
 PORTABLE = {
-    "Core/Src/exchange.c":   set(),
     "Core/Src/hop.c":        {"hop.h", "radio_phy.h"},
     "Core/Src/hublogic.c":   {"hublogic.h", "gridmaster.h", "phy.h", "crypto.h",
                               "exchange.h", "radio_protocol.h", "radio_slots.h"},
-    "Core/Inc/exchange.h":   {"radio_protocol.h"},
     "Core/Inc/hublogic.h":   set(),
     "Core/Inc/hop.h":        set(),
 }
-# superframe and beacon left this tree for OpenHub/Common, guarded there.
-# radio_devices_docs/specs/03-roadmap.md
+# superframe, beacon and exchange left this tree for OpenHub/Common, and are
+# guarded there. radio_devices_docs/specs/03-roadmap.md
 
 # Freestanding only; <stdio.h> pulls newlib into a file with no part yet.
 PORTABLE_ANGLE = {"stddef.h", "stdint.h", "stdbool.h", "string.h", "limits.h"}
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.M)
-# Tracked debts. Each is a tripwire: it fails once the debt is paid.
-PORTABLE_OWED = {("Core/Inc/exchange.h", "sha256.h"): "item 82"}
+# Tracked debts, each a tripwire: it fails once the debt is paid. Item 82's fired.
+PORTABLE_OWED = {}
 
 
 def check_portable():
-    """The include list of the library-to-be; ROADMAP items 76 and 82.
+    """The include list of the library-to-be; ROADMAP item 76.
 
     Why each file's list is what it is, and why the list is per file rather than
     a union, is radio_devices_docs ADR-0028 and ADR-0029.

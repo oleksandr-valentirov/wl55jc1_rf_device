@@ -25,6 +25,7 @@ typedef struct {
     uint32_t req_bad_nonce;      /**< an all-zero dev_nonce carries no freshness */
     uint32_t req_bad_point;
     uint32_t req_no_key;         /**< the ephemeral keygen or the TRNG refused */
+    uint32_t req_no_keys;        /**< the schedule refused; no response goes out */
     uint32_t rsp_sent;
     uint32_t rsp_tx_err;
     uint32_t conf_seen;

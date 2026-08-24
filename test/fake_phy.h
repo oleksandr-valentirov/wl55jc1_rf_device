@@ -33,6 +33,7 @@ typedef struct {
 
     uint32_t dev_saw_init, dev_saw_rsp, dev_saw_accept, dev_rsp_mismatch;
     uint32_t dev_rsp_wrong_ids, dev_rsp_eph_static, dev_rsp_bad_point;
+    uint32_t dev_rsp_derive_bad;
     uint32_t t_init_us, accept_at_us;
     uint32_t hub_id, dev_id, req_superframe;
     uint8_t  hub_static[32], dev_priv[32], dev_pub[32], dev_nonce[8];

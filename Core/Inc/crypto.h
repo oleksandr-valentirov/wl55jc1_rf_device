@@ -86,6 +86,7 @@ int crypto_wire_kat(crypto_wire_result_t *r);
 typedef struct {
     uint8_t  salt_ok;
     uint8_t  transcript_ok;
+    uint8_t  derive_ok;             /* the schedule's own verdict, not its output */
     uint8_t  session_ok;
     uint8_t  confirm_hub_ok;
     uint8_t  confirm_dev_ok;

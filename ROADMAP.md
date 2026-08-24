@@ -194,6 +194,25 @@ moment (`verification` skill).
 
 ## Defects
 
+### 85. `release` refused to reopen a window only it could reopen — `defect` `fixed 2026-08-25`
+
+**Found by a batch of ten enrolment windows that turned out to be zero trials.**
+`do_release()` returned early on an unpaired node — *"not paired - nothing to
+release"* — and the enrolment window is reopened inside the branch it skipped.
+So a node that had dropped its pairing and let its 600 s window shut had no way
+back but a power cycle, while `state` printed *"power-cycle or `release` to
+reopen it"* and `release` declined.
+
+**The cost was not the power cycle.** Six windows ran with the node deaf and the
+hub's join window never opened, and the counters read exactly what six genuinely
+failed pairings read: zero requests sent, zero seen. **A procedure that does not
+execute is indistinguishable, in the numbers, from one that executes and fails**
+— and item 59 predicts four failures in five, so the reading was plausible.
+
+Fixed by separating the two things `release` did: `device_reopen_enrol()` is its
+own call, `device_release_pairing()` uses it, and the unpaired branch takes it
+and says what it did. `bench/journal/2026-08-25-architect.md`.
+
 ### 6. ADR-0023's transmit floor has never been exercised across a reset — `defect`
 
 **Replaces the two entries this file carried for the counter reservation.**
@@ -723,7 +742,7 @@ the reason this entry exists rather than a comment: nothing fails if
 
 `radio_devices_docs/radio/hopping.md`.
 
-### 82. `exchange.h` reaches an implementation, and every include listing has missed it — `contract`
+### 82. `exchange.h` reaches an implementation, and every include listing has missed it — `contract` `closed 2026-08-25`
 
 `exchange.c` is the file ADR-0028 singles out as the most portable of the five:
 it includes `<string.h>` and `exchange.h` and nothing else, and it computes
@@ -759,6 +778,27 @@ working HKDF and HMAC, and what moves is which side owns the schedule built on
 them. The hub's half is its item 80, and the pairing must be re-measured on air
 afterwards: the pair vectors would agree by construction once one schedule serves
 both ends, which is the green check that means nothing.
+
+**Closed 2026-08-25.** `exchange.{c,h}` left this tree for `OpenHub/Common/`,
+where both firmwares compile them; `Core/Src/kdf.c` is this side's supply of the
+two operations and is the only file that now sees `sha256.h` from that
+direction. `PORTABLE_OWED` held exactly one entry, this one, and **the tripwire
+fired on the commit that paid it** — which is what it was written for. The table
+is empty now and the mechanism went with it; re-adding it is four lines when the
+next debt of the shape appears.
+
+**One clause did not survive contact and is worth naming.** ADR-0029 declares a
+nine-name `crypto.h` as the backend. The library declares `kdf.h` with **two**,
+because that is what the schedule calls — a nine-name header would have been a
+name broader than its coverage, and `crypto.h` is already on this tree's include
+path, so the shared one would have been silently shadowed exactly as
+`timebase.h` was in step 1.
+
+**The last line above was also wrong**, and the correction is in ADR-0029 beside
+the claim: `pair_v4` is generated from the specification by a third
+implementation, so reproducing that **immutable** set after the merge is a real
+control rather than agreement by construction. It is one of the two witnesses
+step 5 was verified on.
 
 ### 9. `UPLINK_AIM_US` is a contract number that lives on one side — `contract`
 

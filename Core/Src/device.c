@@ -921,14 +921,18 @@ int device_set_opportunities(uint8_t k, uint8_t all) {
 
 /* Keeps the identity and drops the grant, which are one store today.
  * radio_devices_docs/wl55_device/arch/store.md */
+void device_reopen_enrol(void) {
+    enrol_window_from_s = timebase_uptime_s();
+    enrol_shut_said = 0;
+    invite_last_ms = 0;
+}
+
 int device_release_pairing(void) {
     if (store_release_pairing() != 0)
         return -1;
     /* The RAM copy too, or it stays paired until the reset this replaces. */
     memset(&join_res, 0, sizeof(join_res));
-    enrol_window_from_s = timebase_uptime_s();
-    enrol_shut_said = 0;
-    invite_last_ms = 0;
+    device_reopen_enrol();
     return 0;
 }
 

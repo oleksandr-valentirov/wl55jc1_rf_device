@@ -45,6 +45,7 @@ typedef struct {
     uint32_t rsp_wrong_ids;
     uint32_t rsp_bad_point;
     uint32_t rsp_eph_is_static;
+    uint32_t rsp_derive_bad;
     uint32_t rsp_confirm_bad;
     uint32_t conf_sent;
     uint32_t accept_timeout;

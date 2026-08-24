@@ -168,10 +168,14 @@ static void handle_pair_req(const uint8_t *rx, uint8_t len) {
     exchange_salt(WL55_HUB_ID, WL55_HUB_DEV_ID, req_sf, dev_nonce, salt);
     exchange_transcript(WL55_HUB_ID, WL55_HUB_DEV_ID, req_sf, dev_nonce,
                         static_pub, eph_pub, dev_pub, transcript);
-    exchange_derive(z1, z2, salt, transcript, &ex_keys);
+    const int drc = exchange_derive(z1, z2, salt, transcript, &ex_keys);
     memset(z1, 0, sizeof(z1));
     memset(z2, 0, sizeof(z2));
     memset(eph_priv, 0, sizeof(eph_priv));
+    if (drc != 0) {
+        v.req_no_keys++;
+        return;
+    }
 
     rsp.type    = RADIO_FRAME_PAIR_RSP;
     rsp.version = RADIO_PAIR_VERSION;

@@ -54,7 +54,8 @@ int main(void) {
      * radio_devices_docs/wl55_device/testing/host-tests.md */
     eq("salt is the transcript prefix", transcript, salt, sizeof(salt));
 
-    exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt, transcript, &k);
+    check("derive reports success",
+          exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt, transcript, &k) == 0);
     eq("session key", k.session, PV_KEY_SESSION, sizeof(PV_KEY_SESSION));
     eq("confirm key hub", k.confirm_key_hub, PV_CONFIRM_KEY_HUB, 32);
     eq("confirm key dev", k.confirm_key_dev, PV_CONFIRM_KEY_DEV, 32);
@@ -69,19 +70,23 @@ int main(void) {
     memcpy(nonce_bad, PV_DEV_NONCE, sizeof(nonce_bad));
     nonce_bad[7] ^= 0x01u;
     exchange_salt(HUB_ID, DEV_ID, PAIR_REQ_SUPERFRAME, nonce_bad, salt_bad);
-    exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt_bad, transcript, &k2);
+    /* A failed derive zeroes the keys, so "the key changed" passes vacuously. */
     check("one nonce bit changes the session key",
+          exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt_bad,
+                          transcript, &k2) == 0 &&
           memcmp(k2.session, PV_KEY_SESSION, sizeof(PV_KEY_SESSION)) != 0);
 
     exchange_salt(HUB_ID, DEV_ID, PAIR_REQ_SUPERFRAME + 1u, PV_DEV_NONCE, salt_bad);
-    exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt_bad, transcript, &k2);
     check("one superframe changes the session key",
+          exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt_bad,
+                          transcript, &k2) == 0 &&
           memcmp(k2.session, PV_KEY_SESSION, sizeof(PV_KEY_SESSION)) != 0);
 
     /* Z1 authenticates, Z2 is fresh: swapping them is a whole-key error.
      * radio_devices_docs/wl55_device/testing/host-tests.md */
-    exchange_derive(PV_Z + EXCHANGE_Z_TERM_LEN, PV_Z, salt, transcript, &k2);
     check("swapping the Z terms changes the session key",
+          exchange_derive(PV_Z + EXCHANGE_Z_TERM_LEN, PV_Z, salt,
+                          transcript, &k2) == 0 &&
           memcmp(k2.session, PV_KEY_SESSION, sizeof(PV_KEY_SESSION)) != 0);
 
     /* Named for what it detects. It says nothing about a replayed response. */

@@ -128,14 +128,16 @@ static void show_state(void) {
         out("enrol   WINDOW SHUT - power-cycle or `release` to reopen it\r\n");
 }
 
-/* The one console command that writes.
- * radio_devices_docs/wl55_device/arch/store.md */
+/* The one console command that writes, and the only way to reopen the window.
+ * radio_devices_docs/wl55_device/radio/pairing.md */
 static void do_release(void) {
     device_view_t v;
 
     device_snapshot(&v);
     if (!v.paired) {
-        out("not paired - nothing to release\r\n");
+        device_reopen_enrol();
+        out("not paired; enrolment window reopened for %lu s\r\n",
+            (unsigned long)(DEVICE_ENROL_WINDOW_MS / 1000u));
         return;
     }
     if (device_release_pairing() != 0) {
@@ -233,10 +235,11 @@ static void show_hub(void) {
     out("rx      sync %lu  crc err %lu  frames %lu  other %lu (last type %02x)\r\n",
         (unsigned long)h.ev_sync, (unsigned long)h.ev_crc,
         (unsigned long)h.ev_frame, (unsigned long)h.other_frames, h.other_type);
-    out("req     seen %lu  bad frame %lu  ids %lu  nonce %lu  point %lu  key %lu\r\n",
+    out("req     seen %lu  bad frame %lu  ids %lu  nonce %lu  point %lu  key %lu  keys %lu\r\n",
         (unsigned long)h.req_seen, (unsigned long)h.req_bad_frame,
         (unsigned long)h.req_bad_ids, (unsigned long)h.req_bad_nonce,
-        (unsigned long)h.req_bad_point, (unsigned long)h.req_no_key);
+        (unsigned long)h.req_bad_point, (unsigned long)h.req_no_key,
+        (unsigned long)h.req_no_keys);
     out("rsp     sent %lu  tx err %lu\r\n",
         (unsigned long)h.rsp_sent, (unsigned long)h.rsp_tx_err);
     out("conf    seen %lu  bad frame %lu  ids %lu  no exchange %lu  mismatch %lu\r\n",
@@ -280,6 +283,30 @@ static void show_help(void) {
 #endif
 }
 
+/* pair_v4 on this silicon. Its caller went with cli.c and was never replaced.
+ * radio_devices_docs/wl55_device/security/self-tests.md */
+static void show_pair(void) {
+    crypto_pair_result_t p;
+
+    if (crypto_pair_kat(&p) != 0) {
+        out("pair kat did not run\r\n");
+        return;
+    }
+    out("pair_v4 %s  salt %s  transcript %s  derive %s  session %s\r\n",
+        p.digest, p.salt_ok ? "ok" : "FAIL", p.transcript_ok ? "ok" : "FAIL",
+        p.derive_ok ? "ok" : "FAIL", p.session_ok ? "ok" : "FAIL");
+    out("  confirm hub %s  dev %s  eph-is-static refused %s  hop key %s\r\n",
+        p.confirm_hub_ok ? "ok" : "FAIL", p.confirm_dev_ok ? "ok" : "FAIL",
+        p.eph_static_rejected ? "ok" : "FAIL", p.hop_key_ok ? "ok" : "FAIL");
+    out("  accept open %s  forge refused %s  uplink seal %s\r\n",
+        p.accept_open_ok ? "ok" : "FAIL",
+        p.accept_forge_rejected ? "ok" : "FAIL",
+        p.uplink_seal_ok ? "ok" : "FAIL");
+    out("  after misconfig %s  fips-197 %s  total %lu us\r\n",
+        p.after_misconfig_ok ? "ok" : "FAIL", p.fips_ok ? "ok" : "FAIL",
+        (unsigned long)p.total_us);
+}
+
 /* The KATs had no caller, which is how a self-test reads as passing.
  * radio_devices_docs/wl55_device/security/self-tests.md */
 static void show_curve(void) {
@@ -309,6 +336,8 @@ static void show_curve(void) {
         w.forge_rejected ? "ok" : "FAIL", w.odd_seal_ok ? "ok" : "FAIL",
         w.odd_open_ok ? "ok" : "FAIL", w.shared_reject_ok ? "ok" : "FAIL");
     out("  total %lu us\r\n", (unsigned long)w.total_us);
+
+    show_pair();
 }
 
 /* Measured, not assumed: this delay decides whether the hub is listening yet.
@@ -333,10 +362,11 @@ static void show_join(void) {
         (unsigned)j.rsp_other_type, (unsigned)j.rsp_len);
     /* Between heard and conf sent: the refusals that used to leave no trace here.
      * radio_devices_docs/wl55_device/radio/pairing.md */
-    out("rsp      bad frame %lu  wrong ids %lu  eph is static %lu  bad point %lu  confirm bad %lu\r\n",
+    out("rsp      bad frame %lu  wrong ids %lu  eph is static %lu  bad point %lu\r\n",
         (unsigned long)j.rsp_bad_frame, (unsigned long)j.rsp_wrong_ids,
-        (unsigned long)j.rsp_eph_is_static, (unsigned long)j.rsp_bad_point,
-        (unsigned long)j.rsp_confirm_bad);
+        (unsigned long)j.rsp_eph_is_static, (unsigned long)j.rsp_bad_point);
+    out("rsp      derive bad %lu  confirm bad %lu\r\n",
+        (unsigned long)j.rsp_derive_bad, (unsigned long)j.rsp_confirm_bad);
     out("conf     sent %lu\r\n", (unsigned long)j.conf_sent);
     out("accept   heard %lu  timeout %lu  crc %lu  skipped %lu (last type %02x)\r\n",
         (unsigned long)j.accept_heard, (unsigned long)j.accept_timeout,

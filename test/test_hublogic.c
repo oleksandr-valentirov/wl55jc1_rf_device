@@ -68,6 +68,7 @@ static void case_exchange_completes(void) {
     CHECK(fp.dev_rsp_eph_static == 0u);
     CHECK(fp.dev_rsp_bad_point == 0u);
     CHECK(fp.dev_rsp_mismatch == 0u);
+    CHECK(fp.dev_rsp_derive_bad == 0u);
     /* The leg the bench lost eleven times out of eleven. */
     CHECK(v.conf_seen >= 1u);
     CHECK(v.conf_mismatch == 0u);

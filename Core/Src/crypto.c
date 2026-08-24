@@ -404,7 +404,8 @@ int crypto_pair_kat(crypto_pair_result_t *r) {
                         V_HUB_PUB, PV_HUB_EPH_PUB, V_DEV_PUB, transcript);
     r->transcript_ok = memcmp(transcript, PV_TRANSCRIPT, sizeof(PV_TRANSCRIPT)) == 0;
 
-    exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN, salt, transcript, &k);
+    r->derive_ok      = exchange_derive(PV_Z, PV_Z + EXCHANGE_Z_TERM_LEN,
+                                       salt, transcript, &k) == 0;
     r->session_ok     = memcmp(k.session, PV_KEY_SESSION, 16) == 0;
     r->confirm_hub_ok = memcmp(k.confirm_hub, PV_CONFIRM_HUB, 16) == 0;
     r->confirm_dev_ok = memcmp(k.confirm_dev, PV_CONFIRM_DEV, 16) == 0;

@@ -96,7 +96,10 @@ static void dev_on_rsp(const radio_pair_rsp_t *rsp) {
     exchange_salt(fp.hub_id, fp.dev_id, fp.req_superframe, fp.dev_nonce, salt);
     exchange_transcript(fp.hub_id, fp.dev_id, fp.req_superframe, fp.dev_nonce,
                         fp.hub_static, rsp->eph_pubkey, fp.dev_pub, transcript);
-    exchange_derive(z1, z2, salt, transcript, &k);
+    if (exchange_derive(z1, z2, salt, transcript, &k) != 0) {
+        fp.dev_rsp_derive_bad++;
+        return;
+    }
     if (!exchange_confirm_equal(rsp->confirm, k.confirm_hub)) {
         fp.dev_rsp_mismatch++;
         return;
