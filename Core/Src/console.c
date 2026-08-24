@@ -64,6 +64,15 @@ static void show_state(void) {
         out("  hub %08lX net %04X slot %u every %u",
             (unsigned long)v.hub_id, v.net_id, v.slot, v.report_every);
     out("\r\n");
+    /* Stated, never inferred: run 2026-08-24-1 read k off a duty cycle. */
+    if (v.opp_all)
+        out("opps    all %u of %u  slots %u/%u/%u\r\n",
+            (unsigned)RADIO_SLOT_OPPS, (unsigned)RADIO_SLOT_OPPS,
+            (unsigned)v.slot, (unsigned)(v.slot + RADIO_SLOT_STRIDE),
+            (unsigned)(v.slot + 2u * RADIO_SLOT_STRIDE));
+    else
+        out("opps    1 of %u  k=%u  slot %u\r\n", (unsigned)RADIO_SLOT_OPPS,
+            (unsigned)v.opp, (unsigned)(v.slot + v.opp * RADIO_SLOT_STRIDE));
     out("clock   sf %lu  period %lu us  since beacon %lu us  %s%s\r\n",
         (unsigned long)v.superframe, (unsigned long)v.period_us,
         (unsigned long)v.since_beacon_us,
@@ -237,13 +246,21 @@ static void show_help(void) {
     out("curve    x25519 and the wire vectors, with their cost\r\n");
     out("join     the pairing window's counters and its timing\r\n");
     out("release  drop the pairing, keep the identity, listen again\r\n");
+#if WL55_DEV_COMMANDS
+    out("opp <k|all>  which of the k opportunities the loop transmits in\r\n");
+#endif
 #if WL55_ROLE_HUB
     out("hub      the hub role's grid and enrolment ladder\r\n");
 #endif
     out("?        this list\r\n");
-    /* One command writes now, and saying which is the point of the line. */
+    /* Saying which commands write is the point of the line. */
+#if WL55_DEV_COMMANDS
+    out("\n'release' and 'opp' change what the node does; the rest only look."
+        "\r\nThis is a WL55_DEV_COMMANDS build - the product build has no 'opp'.\r\n");
+#else
     out("\n'release' is the only one that changes anything; the rest only look."
         "\r\nNothing here starts or stops the node.\r\n");
+#endif
 }
 
 /* The KATs had no caller, which is how a self-test reads as passing.
@@ -314,6 +331,27 @@ static void show_join(void) {
         (unsigned long)j.store_failed);
 }
 
+#if WL55_DEV_COMMANDS
+/* Restores what 08e244e dropped when the reporting loop left cli.c. ROADMAP 77 */
+static void do_opp(const char *arg) {
+    uint8_t all = (strcmp(arg, "all") == 0) ? 1u : 0u;
+    uint8_t k   = 0u;
+
+    if (!all) {
+        if (arg[0] < '0' || arg[0] > '9' || arg[1] != '\0') {
+            out("opp <k|all>, k is 0..%u\r\n", (unsigned)(RADIO_SLOT_OPPS - 1u));
+            return;
+        }
+        k = (uint8_t)(arg[0] - '0');
+    }
+    if (device_set_opportunities(k, all) != 0) {
+        out("k is 0..%u or all\r\n", (unsigned)(RADIO_SLOT_OPPS - 1u));
+        return;
+    }
+    show_state();
+}
+#endif
+
 static void dispatch(void) {
     if (cmd_len == 0)
         return;
@@ -325,6 +363,9 @@ static void dispatch(void) {
     else if (strcmp(cmd, "curve") == 0)   show_curve();
     else if (strcmp(cmd, "join") == 0)    show_join();
     else if (strcmp(cmd, "release") == 0) do_release();
+#if WL55_DEV_COMMANDS
+    else if (strncmp(cmd, "opp ", 4) == 0) do_opp(cmd + 4);
+#endif
 #if WL55_ROLE_HUB
     else if (strcmp(cmd, "hub") == 0)     show_hub();
 #endif

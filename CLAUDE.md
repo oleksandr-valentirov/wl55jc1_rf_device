@@ -118,9 +118,25 @@ tools/console.py /dev/serial/by-id/usb-STMicroelectronics_STLINK-V3_$A-if02 stat
 
 It waits for the `>>> ` prompt rather than guessing a delay, so it can be
 scripted; with no command it dumps the port. **The console is read-only and
-optional** — `state`, `ident`, `radio`, `vectors`, `load` and nothing that
-changes what the node does; `-DWL55_CONSOLE=OFF` builds without it and the
-protocol is unchanged. The node runs from `Core/Src/device.c` on its own. **Both ends of a radio test belong
+optional** — `state`, `ident`, `radio`, `vectors`, `load`, and `release` as the
+one command that writes; `-DWL55_CONSOLE=OFF` builds without it and the protocol
+is unchanged. The node runs from `Core/Src/device.c` on its own.
+
+**`-DWL55_DEV_COMMANDS=ON` breaks that property on purpose and is off by
+default.** It adds `opp <k|all>`, which picks how many of the `RADIO_SLOT_OPPS`
+transmit opportunities the report loop uses — the instrument `08e244e` dropped
+when the reporting loop left `cli.c`, and the only way to reach k > 1 at all
+today (`ROADMAP.md` item 77). Build it into a **separate directory**, because
+the product image must stay the one that gets flashed by habit:
+
+```bash
+cmake -S . -B build/Dev -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWL55_DEV_COMMANDS=ON
+cmake --build build/Dev
+```
+
+**`state` names the regime in both builds** — `opps 1 of 3  k=0  slot 2` — so a
+delivery figure never has to have its `k` inferred from a duty cycle again. It
+did have to once, in run `2026-08-24-1`. **Both ends of a radio test belong
 in one shell invocation** — a listener and a transmitter fired from separate
 commands are separated by latency nobody measured, and this bench has spent two
 firmware changes on that

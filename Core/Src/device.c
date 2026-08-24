@@ -904,6 +904,19 @@ static void invite_service(void) {
     tlm_emit(TLM_JOIN_TRY, invite_slices, (uint32_t)(-rc), 0u, 0u);
 }
 
+#if WL55_DEV_COMMANDS
+/* The k=3 geometry as an instrument, which is all it has ever been. ROADMAP 77 */
+int device_set_opportunities(uint8_t k, uint8_t all) {
+    if (!all && k >= RADIO_SLOT_OPPS)
+        return -1;
+    report_opp_all = all ? 1u : 0u;
+    report_opp     = all ? 0u : k;
+    /* Re-announce: arm_opp gates the record, so a silent change loses the boundary. */
+    arm_opp = 0xFEu;
+    return 0;
+}
+#endif
+
 /* Keeps the identity and drops the grant, which are one store today.
  * radio_devices_docs/wl55_device/arch/store.md */
 int device_release_pairing(void) {
@@ -941,6 +954,9 @@ void device_snapshot(device_view_t *v) {
     v->dev_id       = v->provisioned ? st.dev_id : 0u;
     v->hub_id       = v->provisioned ? st.hub_id : 0u;
     v->net_id       = v->provisioned ? (uint16_t)st.net_id : 0u;
+    /* The regime, always: a delivery figure that does not state k has no regime. */
+    v->opp          = report_opp;
+    v->opp_all      = report_opp_all;
     v->slot         = join_res.slot;
     v->report_every = join_res.report_every;
     v->key_gen      = v->provisioned ? st.key_gen : 0u;

@@ -49,6 +49,9 @@ message(STATUS "Cube FW: ${CUBE_FW_PATH}")
 # radio_devices_docs/wl55_device/testing/console.md
 option(WL55_CONSOLE "compile the read-only console" ON)
 
+# On adds commands that change the node. Off is the product. ROADMAP 77
+option(WL55_DEV_COMMANDS "console commands that change what the node does" OFF)
+
 # NODE is the product build; HUB drives the same air from a second board.
 # radio_devices_docs/radio/phy-seam.md
 set(WL55_ROLE "NODE" CACHE STRING "NODE or HUB")
@@ -163,6 +166,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
     WL55_CONSOLE=$<BOOL:${WL55_CONSOLE}>
+    WL55_DEV_COMMANDS=$<BOOL:${WL55_DEV_COMMANDS}>
     WL55_ROLE_HUB=$<STREQUAL:${WL55_ROLE},HUB>
     WL55_HUB_DEV_ID=${WL55_HUB_DEV_ID}
     WL55_HUB_ID=${WL55_HUB_ID}

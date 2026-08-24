@@ -7,7 +7,8 @@
  * @brief The protocol the node runs on its own, and a read-only view of it.
  *
  * Nothing here is armed, enabled or started by anything a person types. The
- * console is an observer of this module and never an input to it.
+ * console is an observer of this module and never an input to it - except under
+ * WL55_DEV_COMMANDS, which is off in the product build and says so.
  *
  * radio_devices_docs/wl55_device/radio/pairing.md
  */
@@ -34,6 +35,8 @@ typedef struct device_view {
     uint32_t hub_id;
     uint16_t net_id;
     uint8_t  slot;              /**< base slot; the other opportunities derive from it */
+    uint8_t  opp;               /**< which single opportunity the loop uses, when not all */
+    uint8_t  opp_all;           /**< the loop transmits on every k rather than one */
     uint8_t  report_every;      /**< superframes between reports, as granted */
     uint8_t  key_gen;
     uint32_t superframe;        /**< the node's current count, 0 before the first beacon */
@@ -69,6 +72,24 @@ typedef struct device_view {
  * The only route that does not need a debug probe. ROADMAP item 58.
  */
 int device_release_pairing(void);
+
+#if WL55_DEV_COMMANDS
+/**
+ * @brief Picks which of the k opportunities the report loop transmits in.
+ * @param k    the opportunity, 0..RADIO_SLOT_OPPS-1; ignored when all is set
+ * @param all  non-zero to transmit on every opportunity instead of one
+ * @retval  0  taken
+ * @retval -1  k is outside the grid
+ *
+ * An instrument and not a feature. The grant that would set this autonomously
+ * does not exist - ROADMAP item 77 - and until it does, a delivery figure
+ * measured without stating k is a figure with no regime.
+ *
+ * This is the one place the console is an input to this module, which is why it
+ * is compiled out of the product build.
+ */
+int device_set_opportunities(uint8_t k, uint8_t all);
+#endif
 
 /**
  * @brief Fills a caller's view of the node. Reads only; changes nothing.
