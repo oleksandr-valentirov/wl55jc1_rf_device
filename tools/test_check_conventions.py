@@ -56,6 +56,48 @@ BLOCK_ARMS = [
 ]
 
 
+
+# The ten files check_portable pins, with allowed includes. Item 76.
+def portable_corpus(**edits):
+    files = {
+        "Core/Src/exchange.c":   '#include <string.h>\n#include "exchange.h"\nint a;\n',
+        "Core/Src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\n#include "crypto.h"\nint b;\n',
+        "Core/Src/beacon.c":     '#include "beacon.h"\n#include "radio_slots.h"\nint c;\n',
+        "Core/Src/hublogic.c":   '#include "hublogic.h"\n#include "phy.h"\nint d;\n',
+        "Core/Src/superframe.c": '#include "superframe.h"\n#include "timebase.h"\nint e;\n',
+        "Core/Inc/exchange.h":   '#include <stdint.h>\n#include "radio_protocol.h"\n#include "sha256.h"\n',
+        "Core/Inc/beacon.h":     '#include <stdint.h>\n#include "superframe.h"\n',
+        "Core/Inc/superframe.h": '#include <stdint.h>\n#include "radio_slots.h"\n',
+        "Core/Inc/hublogic.h":   "#include <stdint.h>\n",
+        "Core/Inc/hop.h":        "#include <stdint.h>\n",
+    }
+    for name, body in edits.items():
+        key = name.replace("__", "/").replace("_c", ".c").replace("_h", ".h")
+        if body is None:
+            del files[key]
+        else:
+            files[key] = body
+    return files
+
+
+# name, files, must the portable-include check fire
+PORTABLE_ARMS = [
+    ("portable corpus clean", portable_corpus(), False),
+    ("no corpus: another tree", {"a.c": "int q;\n"}, False),
+    ("hal include in hublogic",
+     portable_corpus(**{"Core__Src__hublogic_c":
+                        '#include "hublogic.h"\n#include "stm32wlxx_hal.h"\nint d;\n'}), True),
+    ("stdio in beacon",
+     portable_corpus(**{"Core__Src__beacon_c":
+                        '#include "beacon.h"\n#include <stdio.h>\nint c;\n'}), True),
+    ("a listed file renamed away",
+     portable_corpus(**{"Core__Src__hop_c": None}), True),
+    ("tracked debt paid, entry left",
+     portable_corpus(**{"Core__Inc__exchange_h":
+                        '#include <stdint.h>\n#include "radio_protocol.h"\n'}), True),
+]
+
+
 def run(files):
     """One arm, in its own repository, with everything staged before the check."""
     tmp = tempfile.mkdtemp(prefix="conv-")
@@ -64,7 +106,9 @@ def run(files):
         shutil.copy(CHECKER, os.path.join(tmp, "tools", "check_conventions.py"))
         subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
         for name, body in files.items():
-            with open(os.path.join(tmp, name), "w") as fh:
+            dest = os.path.join(tmp, name)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "w") as fh:
                 fh.write(body)
         # Staged, because whether a file is tracked decides what the checker sees.
         subprocess.run(["git", "add", "-A"], cwd=tmp, check=True)
@@ -90,8 +134,23 @@ def blocks(out):
     raise AssertionError("the checker printed no block line:\n" + out)
 
 
+def portable(out):
+    for line in out.split("\n"):
+        if line.startswith("== includes outside"):
+            return int(line.rsplit(":", 1)[1].strip(" =")) > 0
+    raise AssertionError("the checker printed no portable line:\n" + out)
+
+
 def main():
     bad = 0
+    for name, files, want in PORTABLE_ARMS:
+        out, rc = run(files)
+        got = portable(out)
+        ok = got == want
+        if not ok:
+            bad += 1
+        print("%-26s portable want %-5s got %-5s exit %d  %s"
+              % (name, want, got, rc, "ok" if ok else "FAIL"))
     for name, files, want in BLOCK_ARMS:
         out, rc = run(files)
         got = blocks(out)
@@ -111,7 +170,8 @@ def main():
         print("%-26s want %-5s got %-5s exit %d  %s"
               % (name, want, got, rc, "ok" if ok and gate else "FAIL"))
     print("check_conventions: %s (%d arms)"
-          % ("ok" if not bad else "%d FAILED" % bad, len(ARMS) + len(BLOCK_ARMS)))
+          % ("ok" if not bad else "%d FAILED" % bad,
+             len(ARMS) + len(BLOCK_ARMS) + len(PORTABLE_ARMS)))
     return 1 if bad else 0
 
 

@@ -542,7 +542,37 @@ every frame to CRC, so filter width is not the deciding term in either direction
 
 `radio_devices_docs/radio/phy.md`.
 
-### 76. The library-to-be lives here and nothing stops it growing a HAL — `debt`
+### 76. The library-to-be lives here and nothing stops it growing a HAL — `debt` `built 2026-08-24`
+
+**The guard is built and it was red on a real defect the moment it ran.**
+`check_portable()` in `tools/check_conventions.py` pins the include list of ten
+files — the five sources and the five headers they reach through — and its first
+run refused `Core/Inc/exchange.h: "sha256.h"`, which is item 82 and was found by
+the check rather than by the reading that prompted it.
+
+**It is a tripwire rather than a permanent red.** `PORTABLE_OWED` carries that
+one known include with the item that closes it, so the check gates at zero today
+— and **it fails when the debt is paid and the entry is left behind**, the way
+the duty-cycle assert closes item 10. A guard that is always red is a guard
+somebody turns off.
+
+**Six arms in `tools/test_check_conventions.py`, and every one was run against
+the checker rather than argued** — 19 arms total now, from 13:
+
+| Arm | Refuses |
+|---|---|
+| `#include "stm32wlxx_hal.h"` in `hublogic.c` | the thing this entry was written for |
+| `#include <stdio.h>` in `beacon.c` | newlib in a file with no part chosen |
+| a listed file renamed away | **the empty population** — a stale list reads as a pass |
+| the tracked debt paid, entry left behind | the tripwire firing |
+| the clean corpus | must not fire |
+| no corpus at all — another tree | must not fire |
+
+**The empty-population arm is the one that matters most**, and it is why the
+check discriminates *none of the ten present* (another tree) from *some present*
+(this tree, with a file moved out from under the list). Without it a rename
+silently converts the guard into a check of nothing.
+
 
 `hublogic.c`, `exchange.c`, `beacon.c`, `superframe.c` and `hop.c` include only
 `phy.h`, `crypto.h`, `timebase.h` and the shared contract headers. **That is what
@@ -558,6 +588,55 @@ has been bitten by most.**
 The check is cheap and mechanical — the include list of five files — and
 `tools/check_conventions.sh` is where it belongs, beside the rules that are
 already enforced rather than remembered.
+
+**The list was measured before the check was written, and four of the five are
+freer than this entry assumed.** Beyond `<string.h>` and each file's own header:
+
+| File | Includes |
+|---|---|
+| `exchange.c` | **nothing** |
+| `hop.c` | `radio_phy.h`, `crypto.h` |
+| `beacon.c` | `radio_phy.h`, `radio_protocol.h`, `radio_slots.h` |
+| `hublogic.c` | `phy.h`, `crypto.h`, `exchange.h`, `radio_protocol.h`, `radio_slots.h` |
+| `superframe.c` | **`timebase.h`** |
+
+Four of them need no clock at all. **The check must therefore pin the list per
+file rather than allow one union across all five** — a union permits
+`hublogic.c` a `timebase.h` it does not have today, and a permission nobody
+needs is a permission that gets used.
+
+**The check must follow the local headers, not stop at the source file.**
+`exchange.c` includes `<string.h>` and `exchange.h` and nothing else — the
+cleanest include line of the five — and `exchange.h` includes `sha256.h`, this
+tree's software SHA-256. **A check that reads only the five `.c` files would have
+passed that and called the file portable**, which is item 82 and is the exact
+failure this entry exists to prevent, arriving one level of indirection out. The
+five headers are on the list too, and the check walks the quoted includes it
+finds in them.
+
+**And `timebase.h` being on that list at all is a decision this tree had made
+without recording.** ADR-0028 names three backends the library declares —
+`phy.h`, `host.h`, `crypto.h` — and `superframe.c` has been including a fourth
+since before that record was written. The two trees' `timebase.h` do not agree
+on a surface: this one offers `micros()`, the hub offers `rfm_micros()`, and the
+hub's `timebase_us_to_ticks` / `timebase_ticks_to_us` have no equivalent here at
+all. Neither build can see the disagreement, because each compiles against its
+own.
+
+[ADR-0029](../radio_devices_docs/radio/decisions/0029-the-library-declares-four-backends-and-absorbs-no-control.md)
+settles it: four backends, and `timebase.h`'s declared surface is
+`timebase_now`, `timebase_elapsed`, `timebase_us_to_ticks`, `timebase_ticks_to_us`.
+This tree owes **`timebase_now()` as a one-line wrapper over `micros()`, and the
+two conversions as the identity** — they must exist even though nothing here
+scales, because a backend that omits what it does not need is a backend the
+library cannot be built against. The 77 existing `micros()` sites keep their
+name; only `superframe.c`'s four convert, as part of the move.
+
+The same record moves this file's `hop.c` **into the suite as a reference
+implementation** rather than deleting it: `test_hop.c` comparing this tree's deck
+against the hub's published `hop_v1` is the strongest check in either tree, and
+absorbing `hop.c` into the library would delete it while leaving every test
+green.
 
 `radio_devices_docs/radio/phy-seam.md`.
 
@@ -595,6 +674,74 @@ Only visible because the records are timestamped; a counter shows the same
 
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
+
+### 83. `vectors_report` compares two constant tables and never runs `hop.c` — `debt`
+
+`vectors_report()` checks `vec_hop_key`, `vec_hop_prf_in`, `vec_hop_prf_out`,
+`vec_hop_deck_cycle0`, `vec_hop_deck_cycle1` and `vec_aes_fips_out` against the
+hub's `HV_*`. **Every one of those is a constant on both sides** — two arrays from
+two generators. `hop_init` and `hop_channel` are never called.
+
+The file's own comment carries the lesson one level down: *values, not digests:
+two digests from one header agree by construction.* **The same objection applies
+one level up** — two tables of constants agreeing says the generators agree, and
+says nothing about the code that runs.
+
+Both `hop_vectors.h` and `hop_v1.h` are already linked into this firmware, so the
+decks are on the board and nothing executes against them. On the hub the same gap
+exists one layer higher — its `hop_prf_selftest` pins the PRF block and stops
+there, its item 81.
+
+**The air is what covers this today, and it is about to stop covering it.** Two
+independent implementations make a deck bug total silence; one shared
+implementation makes it the same wrong channel at both ends with a working link.
+[ADR-0029](../radio_devices_docs/radio/decisions/0029-the-library-declares-four-backends-and-absorbs-no-control.md)
+decision 5 is conditional on this.
+
+The pattern is already here: `crypto_gcm_kat`, `crypto_x25519_kat`,
+`crypto_wire_kat` and `crypto_pair_kat` all run on the silicon and reach the
+console. A `hop_kat` beside them runs the deck under this part's real toolchain
+and optimisation level — which is also the half of ADR-0025's lesson a host
+reference cannot carry.
+
+`radio_devices_docs/wl55_device/radio/hopping.md`.
+
+### 82. `exchange.h` reaches an implementation, and every include listing has missed it — `contract`
+
+`exchange.c` is the file ADR-0028 singles out as the most portable of the five:
+it includes `<string.h>` and `exchange.h` and nothing else, and it computes
+**both** confirmations from one key schedule, so the logic has never needed to
+know which end it is.
+
+**Its header is where the dependency is.** `exchange.h` includes `sha256.h` —
+this tree's own **software** SHA-256 — and `exchange.c` calls `hkdf_sha256` and
+`hmac_sha256` through it:
+
+    exchange.c  →  exchange.h  →  sha256.h      /* the implementation, not a seam */
+
+So the file that looks perfectly portable from a listing is bound to a primitive
+[ADR-0012](../radio_devices_docs/radio/decisions/0012-wire-format-is-the-contract.md)
+puts firmly on the per-platform side: SHA-256 is software here and the HASH
+peripheral on the hub. **A listing of includes cannot see this, and that is the
+whole finding** — it is the same shape as item 76's, one level of indirection
+further out.
+
+The hub, checked by grep on 2026-08-24, has **no `hkdf_sha256` and no
+`hmac_sha256` at all**. It has the entire derivation behind `crypto_pair_derive()`.
+The seam therefore falls below the key schedule here and above it there.
+
+What this tree owes, per
+[ADR-0029](../radio_devices_docs/radio/decisions/0029-the-library-declares-four-backends-and-absorbs-no-control.md):
+`crypto_hkdf_sha256` and `crypto_hmac_sha256` declared on `crypto.h` and supplied
+from `sha256.c`, which already has both; `exchange.h` stops including `sha256.h`;
+and `sha256.h` stays in this tree, out of the library, because it is an
+implementation of a primitive the other side does in hardware.
+
+**No new cryptography is written on either side** — both trees already have a
+working HKDF and HMAC, and what moves is which side owns the schedule built on
+them. The hub's half is its item 80, and the pairing must be re-measured on air
+afterwards: the pair vectors would agree by construction once one schedule serves
+both ends, which is the green check that means nothing.
 
 ### 9. `UPLINK_AIM_US` is a contract number that lives on one side — `contract`
 

@@ -155,21 +155,81 @@ def check(files, only=None):
                         own_line.append("%s:%d" % (p, n))
     return long_blocks, own_line, foreign, long_brief
 
+# The library-to-be's include list, pinned per file. ROADMAP items 76 and 82.
+PORTABLE = {
+    "Core/Src/exchange.c":   set(),
+    "Core/Src/hop.c":        {"hop.h", "radio_phy.h", "crypto.h"},
+    "Core/Src/beacon.c":     {"beacon.h", "radio_phy.h", "radio_protocol.h", "radio_slots.h"},
+    "Core/Src/hublogic.c":   {"hublogic.h", "phy.h", "crypto.h", "exchange.h",
+                              "radio_protocol.h", "radio_slots.h"},
+    "Core/Src/superframe.c": {"superframe.h", "timebase.h"},
+    "Core/Inc/exchange.h":   {"radio_protocol.h"},
+    "Core/Inc/beacon.h":     {"superframe.h", "radio_slots.h"},
+    "Core/Inc/superframe.h": {"radio_slots.h"},
+    "Core/Inc/hublogic.h":   set(),
+    "Core/Inc/hop.h":        set(),
+}
+# Freestanding only; <stdio.h> pulls newlib into a file with no part yet.
+PORTABLE_ANGLE = {"stddef.h", "stdint.h", "stdbool.h", "string.h", "limits.h"}
+INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.M)
+# Tracked debts. Each is a tripwire: it fails once the debt is paid.
+PORTABLE_OWED = {("Core/Inc/exchange.h", "sha256.h"): "item 82"}
+
+
+def check_portable():
+    """The include list of the library-to-be; ROADMAP items 76 and 82.
+
+    Why each file's list is what it is, and why the list is per file rather than
+    a union, is radio_devices_docs ADR-0028 and ADR-0029.
+
+    A missing file is a failure, not a skip: a file renamed out from under this
+    list is otherwise indistinguishable from a file that passes."""
+    present = [p for p in PORTABLE if os.path.isfile(p)]
+    # None present is another tree; some present is a file renamed away.
+    if not present:
+        return []
+    bad, seen = [], set()
+    for path, allowed in sorted(PORTABLE.items()):
+        if not os.path.isfile(path):
+            bad.append("%s: MISSING - the list is stale, not the file portable" % path)
+            continue
+        text = io.open(path, encoding="utf-8", errors="replace").read()
+        own = os.path.basename(path).replace(".c", ".h")
+        for bracket, name in INCLUDE_RE.findall(text):
+            if bracket == "<":
+                if name not in PORTABLE_ANGLE:
+                    bad.append("%s: <%s> is not freestanding" % (path, name))
+            elif name in allowed or name == own:
+                pass
+            elif (path, name) in PORTABLE_OWED:
+                seen.add((path, name))
+            else:
+                bad.append("%s: \"%s\" is not on this file's list" % (path, name))
+    for key, owed in sorted(PORTABLE_OWED.items()):
+        if key not in seen and os.path.isfile(key[0]):
+            bad.append("%s: \"%s\" is gone - %s is paid, delete the PORTABLE_OWED line"
+                       % (key[0], key[1], owed))
+    return bad
+
+
 def main():
     changed = "--changed" in sys.argv
     files = tracked(changed)
     longb, own, bad, brief = check(files, touched_lines() if changed else None)
     scope = "lines changed against HEAD" if changed else "every file a human owns"
     print("scope: %s (%d), generated and vendored excluded\n" % (scope, len(files)))
+    # Whole-list even under --changed: a HAL include is wrong either way.
+    port = check_portable()
     for title, items in (("non-ASCII outside CLAUDE.md and the allowed typography", bad),
                          ("comment blocks over 100 characters", longb),
                          ("struct-field comments on their own line", own),
-                         ("Doxygen @brief over 100 characters", brief)):
+                         ("Doxygen @brief over 100 characters", brief),
+                         ("includes outside the library-to-be's list (item 76)", port)):
         print("== %s: %d ==" % (title, len(items)))
         for i in items[:15]:
             print("   " + i)
         if len(items) > 15:
             print("   ... and %d more" % (len(items) - 15))
-    return 1 if (longb or own or bad or brief) else 0
+    return 1 if (longb or own or bad or brief or port) else 0
 
 sys.exit(main())
