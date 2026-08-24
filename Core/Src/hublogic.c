@@ -62,6 +62,7 @@ static uint8_t  window_open;
 static uint8_t  beacon_done;         /* one beacon or invitation a superframe, at the offset */
 
 static uint8_t  ex_state;
+static uint32_t ex_init_frame;   /**< the frame the invitation went out on */
 static uint32_t ex_dev_id;
 static uint32_t ex_deadline_us;
 static uint32_t ex_req_superframe;
@@ -297,6 +298,14 @@ static void on_superframe(void) {
     beacon_done = 0;
 }
 
+/* 1 while the exchange owns this region, so nothing else is transmitted into it.
+ * radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md */
+static int pair_region_owned(void) {
+    if (ex_state == HUB_EX_IDLE)
+        return 0;
+    return (uint32_t)(v.frame_counter - ex_init_frame) <= RADIO_PAIR_CONF_REGION;
+}
+
 static void window_service(void) {
     uint32_t off = offset_us();
 
@@ -328,11 +337,12 @@ static void window_service(void) {
                 v.init_tx_err++;
             } else {
                 v.inits_sent++;
+                ex_init_frame  = v.frame_counter;
                 t_init_us      = phy_now_us();
                 ex_state       = HUB_EX_WAIT_REQ;
                 ex_deadline_us = phy_now_us() + HUB_EX_TIMEOUT_US;
             }
-        } else if ((v.frame_counter % 2u) == 0u) {
+        } else if ((v.frame_counter % 2u) == 0u && !pair_region_owned()) {
             if (send_join_beacon() == 0)
                 v.beacons++;
         }

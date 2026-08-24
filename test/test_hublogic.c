@@ -215,6 +215,16 @@ static void case_confirm_in_the_guard_is_never_heard(void) {
     CHECK(v.conf_seen >= 1u);
 }
 
+/* The hub does not transmit into the region it owes a listen. ADR-0026 */
+static void case_hub_is_silent_in_the_region_it_listens_in(void) {
+    start();
+    run_for(24u * SUPERFRAME_US);
+
+    CHECK(fp.dev_saw_init >= 1u);
+    CHECK(fp.beacons_in_exchange == 0u);
+    CHECK(fp.missed_while_talking == 0u);
+}
+
 /* The grid runs whether or not anyone is enrolling. */
 static void case_grid_runs(void) {
     hub_view_t v;
@@ -225,7 +235,9 @@ static void case_grid_runs(void) {
 
     CHECK(v.superframes >= 7u);
     CHECK(v.windows >= 7u);
-    CHECK(v.beacons + v.inits_sent >= 4u);
+    CHECK(v.inits_sent >= 1u);
+    /* Of four even frames in eight, the one in the region is silent. ADR-0026 */
+    CHECK(v.beacons >= 2u);
     CHECK(fp.hz == RADIO_JOIN_HZ);
 }
 
@@ -239,6 +251,7 @@ int main(void) {
     case_late_tolerance_is_the_turnaround();
     case_confirm_one_region_late_is_refused();
     case_confirm_in_the_guard_is_never_heard();
+    case_hub_is_silent_in_the_region_it_listens_in();
 
     /* An empty population is not a pass: a deleted case must show up here. */
     if (checks < 30u) {

@@ -47,6 +47,7 @@ static void dev_on_init(const radio_pair_init_t *in) {
     radio_pair_req_t req;
 
     fp.dev_saw_init++;
+    fp.exchange_open = 1u;
     fp.t_init_us = fp.now_us;
     memcpy(fp.hub_static, in->hub_static, sizeof(fp.hub_static));
     fp.req_superframe = in->superframe;
@@ -137,12 +138,14 @@ static void dev_receive(const uint8_t *buf, uint8_t len) {
     }
     if (buf[0] == RADIO_FRAME_PAIR_ACCEPT && len == sizeof(radio_pair_accept_t)) {
         fp.dev_saw_accept++;
+    fp.exchange_open = 0u;
         fp.accept_at_us = fp.now_us;
     }
 }
 
 int phy_transmit(const void *payload, uint8_t len, uint32_t *air_us) {
     const uint8_t *b = (const uint8_t *)payload;
+    uint32_t air;
 
     if (len > PHY_MAX_PAYLOAD)
         return -2;
@@ -150,10 +153,22 @@ int phy_transmit(const void *payload, uint8_t len, uint32_t *air_us) {
         return -1;
     fp.tx_count++;
     fp.last_tx_type = b[0];
+    /* ADR-0026: the region belongs to the exchange, so nothing else goes into it. */
+    if (fp.exchange_open && b[0] == RADIO_FRAME_JOIN_BEACON)
+        fp.beacons_in_exchange++;
     /* Air time is charged, so a hub that transmits inside a window spends it. */
-    fp.now_us += RADIO_AIR_START_TO_END_US(len);
+    air = RADIO_AIR_START_TO_END_US(len);
+    /* A part radiating is not a part receiving, and this fake let it be both.
+     * radio_devices_docs/radio/joining.md */
+    if (fp.pending_len != 0u &&
+        (int32_t)(fp.pending_at - fp.now_us) >= 0 &&
+        (int32_t)(fp.pending_at - (fp.now_us + air)) < 0) {
+        fp.missed_while_talking++;
+        fp.pending_len = 0;
+    }
+    fp.now_us += air;
     if (air_us != NULL)
-        *air_us = RADIO_AIR_START_TO_END_US(len);
+        *air_us = air;
     if (fp.deaf_device)
         return 0;
     dev_receive(b, len);

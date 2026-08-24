@@ -997,8 +997,52 @@ mechanism, on a PC, without a board.
 be principled and would buy nothing: the window closes first either way, and it
 would put an untested change on the path that is about to be re-measured.
 
+#### Closed 2026-08-24 on the bench: the hub was talking over it
+
+Run `2026-08-24-3`. **Both of the previous section's possibilities are wrong.**
+The device transmits the confirmation - `conf sent 38` against the hub's
+`conf seen 0` - and it is not late: `invite -> confirm` read 4 008 911, 4 008 923
+and 4 008 930 us against a 4 000 000 us schedule, **under 20 us of variation over
+twenty minutes**, and 8.9 ms inside a guard band the host test measured at
+106 660 us.
+
+**The third instrument found it.** `decode.py` over a 60 s bladeRF capture of the
+join channel decodes the invitation, the request, the response **and the
+`PAIR_CONF`** - so the confirmation was radiating the whole time. Beside each one,
+4.13-4.31 ms ahead of it, sits the hub's own `JOIN_BEACON`, whose air time is
+4.38 ms. The two transmissions overlap, and `phy_sx126x.c:30` holds the receiver
+off for the whole of a blocking send.
+
+**Even lands on even.** `hublogic.c` invites on `frame_counter % 8 == 0` and
+otherwise beacons on `% 2 == 0`; the device answers `RADIO_PAIR_CONF_REGION`
+(**2**) superframes later at the same phase, and `8k + 2` is even. That is why the
+failure was 11 of 11 and then 38 of 38 rather than a rate.
+
+**The clause was already implemented on the H755** - `pair_region_owned()` at
+`OpenHub/CM4/Core/Src/radio.c:1906` suppresses the beacon while the exchange owns
+the region. This role had no such guard. **The title was right and the cause was
+wrong**: the host test refuted the timeout anchor, and the bench found the missing
+ADR-0026 clause.
+
+`hublogic.c` now carries the same guard, bounded to `RADIO_PAIR_CONF_REGION`
+regions from the invitation. **One beacon in eight is deliberately not sent** -
+a real cost to a node still searching, which is why it is bounded rather than
+"silent while busy". First exchange after the reflash: `conf seen 1`,
+`accept sent 1`, `paired 1`, `level confirm -43 dBm` where it read `0`, and node A
+`paired yes hub 574C3535 net 0001 slot 0`.
+
+**The host test caught it before the board confirmed it**, once the fake stopped
+being generous in two ways this run exposed: `phy_transmit` left the hub
+listening through its own transmission, and nothing watched what the hub put into
+the region. `case_hub_is_silent_in_the_region_it_listens_in` was **red against the
+real defect and green after the fix** - a control nobody had to inject.
+
+**What is still owed:** the WL55-to-WL55 baseline the pairing page quotes was
+taken on a fixture that has now changed, so re-measure it before quoting 4 of 4
+again. Item 81 carries the anchor discrepancy this run found and did not settle.
+
 `radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md`,
-`bench/runs/2026-08-23-3/RESULTS.md`. Related: item 80, the backend under this
+`bench/runs/2026-08-23-3/RESULTS.md`, `bench/runs/2026-08-24-3/RESULTS.md`. Related: item 80, the backend under this
 seam has no host test either.
 
 ### 58. A device with no console still cannot be released — `blocking`
@@ -1171,3 +1215,31 @@ callbacks, so the seam to fake is further down.
 logic over two PHYs separates *the logic is wrong* from *this driver is wrong*
 only when both backends are known to honour the same contract. One of them is now
 checked on a PC and the other is checked by reading it.
+
+### 81. The device's `t_beacon` is 11 ms from where the source says it is — `defect`
+
+`join.c:292` takes `t_beacon = micros()` **after** `receive_until` returns, which
+reads as the moment the invitation finished arriving. Two independent
+measurements in run `2026-08-24-3` put it within a millisecond of the
+invitation's **start**, about one whole invitation air time earlier:
+
+| | end-anchor predicts | start-anchor predicts | measured on air |
+|---|---|---|---|
+| invitation -> request burst | 10 824.4 ms | 10 812.5 ms | **10 813.3 ms** |
+| invitation -> confirm burst | 14 780.5 ms | 14 768.6 ms | **14 767.9 ms** |
+
+The node's own counter agrees with the air and not with the source:
+`beacon_to_req_us` is 43 864 us, while the end-anchor requires about 32 000.
+
+**It is not academic.** Everything the region schedule promises is measured from
+this instant, `invite_to_conf_us` is quoted against it, and the host test's fake
+anchors the way the source reads - which is why `test_hublogic` could not
+reproduce item 61's collision until the invariant was stated in terms of the
+hub's schedule instead of millisecond arithmetic.
+
+Same family as item 79: two origins compared as though they were one. What
+settles it is a `micros()` read on both sides of `receive_until` printed once,
+against the capture.
+
+`radio_devices_docs/wl55_device/radio/pairing.md`,
+`bench/runs/2026-08-24-3/RESULTS.md`.

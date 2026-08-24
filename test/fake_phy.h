@@ -22,6 +22,9 @@ typedef struct {
     uint32_t conf_extra_us;       /**< delay past that, for finding the window's edge */
 
     uint32_t tx_count, delivered, missed_while_deaf, sync_seq;
+    uint32_t missed_while_talking; /**< arrived inside the hub's own transmission */
+    uint32_t beacons_in_exchange; /**< beacons the hub put into a region it owed a listen */
+    uint8_t  exchange_open;
     uint8_t  last_tx_type;
 
     uint8_t  pending[PHY_MAX_PAYLOAD];
