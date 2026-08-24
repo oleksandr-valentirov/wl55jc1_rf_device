@@ -3,7 +3,7 @@
 #include "sensor.h"
 
 #include "main.h"
-#include "timebase.h"
+#include "clock.h"
 
 extern ADC_HandleTypeDef hadc;
 

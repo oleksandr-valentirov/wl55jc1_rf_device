@@ -22,7 +22,7 @@
 #include "radio_phy.h"
 #include "radio_slots.h"
 #include "telemetry.h"
-#include "timebase.h"
+#include "clock.h"
 #include "vcp.h"
 #include "vectors.h"
 

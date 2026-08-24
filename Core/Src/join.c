@@ -6,7 +6,7 @@
 #include "crypto.h"
 #include "radio.h"
 #include "radio_protocol.h"
-#include "timebase.h"
+#include "clock.h"
 #include "store.h"
 #include "pair_init.h"
 #include "pair_v4.h"

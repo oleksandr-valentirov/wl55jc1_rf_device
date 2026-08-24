@@ -8,8 +8,8 @@ void superframe_start(superframe_t *sf, uint32_t counter, uint32_t period_us) {
     /* A zero period never reaches its own next boundary.
      * radio_devices_docs/wl55_device/radio/timebase.md */
     sf->period_us = period_us ? period_us : SUPERFRAME_STUB_US;
-    sf->next_boundary_us = micros() + period_us;
-    sf->last_beacon_us = micros();
+    sf->next_boundary_us = timebase_now() + period_us;
+    sf->last_beacon_us = timebase_now();
     sf->running = 1;
     sf->aligned = 0;
     sf->state = SF_SYNC_NONE;
@@ -35,7 +35,7 @@ uint32_t superframe_now(superframe_t *sf) {
 }
 
 int superframe_align(superframe_t *sf, uint32_t counter) {
-    return superframe_align_at(sf, counter, micros());
+    return superframe_align_at(sf, counter, timebase_now());
 }
 
 /* at_us is the first bit, not the end: the frame's own 8 ms would be permanent lag.
@@ -133,5 +133,5 @@ const char *superframe_state_name(const superframe_t *sf) {
 }
 
 uint32_t superframe_since_beacon_us(const superframe_t *sf) {
-    return micros() - sf->last_beacon_us;
+    return timebase_now() - sf->last_beacon_us;
 }

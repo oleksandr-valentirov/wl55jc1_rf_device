@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "telemetry.h"
-#include "timebase.h"
+#include "clock.h"
 
 typedef struct {
     uint32_t seq;

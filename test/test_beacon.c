@@ -7,7 +7,7 @@
 #include "radio_protocol.h"
 #include "radio_slots.h"
 #include "superframe.h"
-#include "timebase.h"
+#include "clock.h"
 
 void host_clock_set(uint32_t us);
 void host_clock_advance(uint32_t us);

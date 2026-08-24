@@ -6,7 +6,7 @@
 #include "radio_phy.h"
 #include "load.h"
 #include "crypto.h"
-#include "timebase.h"
+#include "clock.h"
 #include "stm32wlxx_nucleo_radio.h"
 
 extern SUBGHZ_HandleTypeDef hsubghz;

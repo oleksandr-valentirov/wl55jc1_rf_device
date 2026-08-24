@@ -9,7 +9,7 @@
 #include "monocypher.h"
 #include "sha256.h"
 #include "wire_v4.h"
-#include "timebase.h"
+#include "clock.h"
 
 extern CRYP_HandleTypeDef hcryp;
 extern RNG_HandleTypeDef  hrng;

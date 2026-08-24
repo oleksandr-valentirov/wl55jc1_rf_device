@@ -1,7 +1,7 @@
 /* Time accounting for a superloop: nested, each frame charging only its own.
  * radio_devices_docs/wl55_device/testing/console.md */
 #include "load.h"
-#include "timebase.h"
+#include "clock.h"
 
 #define LOAD_STACK_DEPTH 8
 

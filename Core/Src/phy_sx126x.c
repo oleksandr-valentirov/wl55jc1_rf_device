@@ -8,7 +8,7 @@
 
 #include "phy.h"
 #include "radio.h"
-#include "timebase.h"
+#include "clock.h"
 
 int phy_init(void) {
     /* The join slot, because the caller tunes before it transmits anything. */

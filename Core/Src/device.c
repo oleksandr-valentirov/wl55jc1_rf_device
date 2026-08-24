@@ -9,7 +9,7 @@
 #include "main.h"
 #include "device.h"
 #include "vcp.h"
-#include "timebase.h"
+#include "clock.h"
 #include "radio.h"
 #include "crypto.h"
 #include "frame.h"

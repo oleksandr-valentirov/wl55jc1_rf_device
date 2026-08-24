@@ -27,7 +27,7 @@
 #include "hublogic.h"
 #include "radio.h"
 #include "sensor.h"
-#include "timebase.h"
+#include "clock.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

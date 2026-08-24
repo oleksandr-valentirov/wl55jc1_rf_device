@@ -1,6 +1,6 @@
 /* The uptime fold, kept out of timebase.c so the host can test it.
  * radio_devices_docs/wl55_device/radio/timebase.md */
-#include "timebase.h"
+#include "clock.h"
 
 static uint32_t up_mark_us;
 static uint32_t up_frac_us;
