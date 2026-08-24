@@ -947,3 +947,140 @@ still owed is unchanged and now runnable: release, read `ident`, confirm the id
 did not move, then pair and check the id the hub sees.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
+
+### 77. The k = 3 geometry lost its only writer in the console move — `defect` `blocking`
+
+`report_opp` and `report_opp_all` are declared at `Core/Src/device.c:380` and
+`:382`, read at `:707`, `:708` and `:713`, and **assigned nowhere in this tree**.
+Both are file-scope statics, so both are zero for the life of every image, and
+`k_first = k_last = 0`: the report loop runs once, always on `k = 0`.
+
+**They had a writer and it was the console.** `cli.c` carried
+`report opp <k|all>` — `report_opp_all = 1u` under the comment *"Same grant, a
+later slot: the k=3 geometry used as an instrument"*. `08e244e`, *"the console
+stops being load-bearing"*, moved the reporting loop into `device.c` and **took
+the three reads without the write**. Nothing since has replaced it, by console or
+by grant.
+
+That splits this into two facts that are easy to conflate:
+
+- **k = 3 has never been autonomous.** It was always an operator typing a command.
+  The 20 % figure on [`radio/tdma.md`](../radio_devices_docs/radio/tdma.md) — 151
+  cycles, 453 frames, 39 / 15 / 6 % per opportunity — is a real measurement taken
+  with that command held on.
+- **Today it cannot be reached at all**, so even the instrument is gone, and every
+  delivery figure measured since `08e244e` is a **single-opportunity** figure.
+
+**Two instruments say so and they were not asked to agree.** Regression run
+`2026-08-24-1`, check RG-A-5: measured duty cycle **0.043 %**, against 0.050 %
+predicted for k=1 and 0.150 % for k=3 at `report every 8`. `airgrid`'s C3 reports
+`[3, 0, 0]` on the same window — its `[3, 1, 0]` counts the 868.000 MHz neighbour
+at 16 dB SNR as an uplink, against this system's own 66 dB.
+
+`RADIO_SLOT_OPPS` is 3, carries a static assert, is the denominator of the
+duty-cycle tripwire in `radio_slots.h`, and is the whole of **REQ-F-10**'s
+argument that the event deadline is met by three opportunities inside one second.
+**That argument has never had a mechanism under it.**
+
+**The instrument is back and the item is not closed.** `opp <k|all>` is restored
+under `-DWL55_DEV_COMMANDS=ON`, off by default, so the product console keeps the
+read-only property `device.h` states and the developer build breaks it in one
+named place. Verified on node B in both directions: the dev image answers
+`opp all` with `opps all 3 of 3  slots 0/65/130` and refuses `opp 9`; the product
+image's own help does not list the command and still says `release` is the only
+one that writes.
+
+**`state` now prints the regime in both builds** — `opps 1 of 3  k=0  slot 2` —
+because run `2026-08-24-1` had to infer `k` from a duty cycle, and no run should
+have to again.
+
+**What is still owed is the autonomous grant, and it is a design question**: a hub
+grant in the downlink — what the field name and `arm_opp`'s `0xFF` imply, and what
+item 78 says cannot be delivered today — a local policy on a missed
+acknowledgement, or a compile-time default. The duty cycle constrains the answer
+rather than settling it: k = 3 is 1.200 % *every superframe* and 0.150 % at
+`report every 8`, so the grant must carry the cadence with it.
+
+**REQ-F-10 stays `not met` until that lands**, because an operator holding a
+console command is not a mechanism a requirement can rest on.
+
+**Nothing may quote three opportunities until this closes**, including
+`radio/tdma.md`'s deadline argument and REQ-F-10's stated state.
+
+### 78. The device hears almost nothing the hub sends — `defect` `blocking`
+
+Regression run `2026-08-24-1`, checks RG-A-1 and RG-A-3, and it is the first
+window that held both instruments at once.
+
+| the air, over 31 superframes | this device |
+|---|---|
+| **31 beacons, one per superframe**, each on a grid channel | node A: `sync.lost since=4000027` repeatedly, `since beacon` 5.8–12.9 s |
+| **15 downlinks** | node A: **`downlinks 0 of 5`** |
+| join-channel bursts on channel 14 | node B: **0 invitations across 68 listening slices**, `sync=0` for a whole 10-minute window |
+
+The hub's transmitter is not the suspect: the capture holds its frames. The band
+is not the suspect either — `bandscan.py` over the run's own window puts all 29
+grid channels at 1.17–1.49 % with nothing foreign on any of them.
+
+**Losing sync costs the period estimate, which costs the next beacon.**
+`SUPERFRAME_FRESH_US` is `2 * SUPERFRAME_US`, so two missed beacons drop sync;
+`superframe_align_at()` then clears `measured_us` after `SUPERFRAME_RESYNC_AFTER`
+refusals and re-enters the two-beacon bootstrap. Node A reported
+`per=2006987 us` against a nominal 2 000 000 — **6987 µs per superframe against a
+1400 µs guard**. The estimator itself is sound: `test_period` holds ±18 µs over
+401 estimates and its own two-beacon control sits at +563 µs. It is being starved,
+never reaching the 64-superframe baseline.
+
+So this is a loop rather than a defect in one place, and the entry point is not
+yet known. What separates *the logic is wrong* from *this driver is wrong* is a
+second PHY running the identical logic, which is exactly what
+[ADR-0028](../radio_devices_docs/radio/decisions/0028-the-radio-is-a-library-and-the-region-is-a-compile-time-profile.md)
+§9a sequences early and what `-DWL55_ROLE=HUB` already half-provides.
+
+### 79. `linkjoin.py`'s `hub - nominal` column compares two different origins — `defect`
+
+It prints ~9200 µs on every delivered uplink, against a slot pitch of 9400 and a
+guard of 1400. Read as written that says the device lands a full slot late, which
+is precisely the mechanism K2 has been looking for. **It is not true.**
+
+`arrival_us` is stamped **after the decrypt** — `../OpenHub/Common/inc/ipc.h:535`
+says so, and `../OpenHub/CM4/Core/Src/radio.c:2036` computes it as
+`rfm_micros() - superframe_start_tk` at that point. The column's `nominal` is a
+first-bit figure. Subtracting the device's own in-slot offset and
+`RADIO_UPLINK_AIR_US` leaves **656 µs and 532 µs** on the two delivered frames of
+run `2026-08-24-1` — the decrypt, and the same both times.
+
+The uplink placement is correct. Either subtract the air time and label the column
+what it is, or have the hub stamp at the first bit — which is `hub` item 44 and
+the better fix, because a timestamp taken after a variable-length operation is not
+an arrival time.
+
+**Nothing has been quoted from this column yet.** Fixing it before something is
+is the whole point of writing it down.
+
+### 80. `phy_sx126x.c` has no host test, and the hub's backend now does — `debt`
+
+The hub cut `phy_poll` on 2026-08-24 and got `OpenHub/CM4/test/test_phy.c` with
+it: 95 checks against a fake part, three mutation controls, and three deliberate
+defects it was pointed at to prove it can refuse
+([host-tests.md](../radio_devices_docs/open_hub/testing/host-tests.md)). This
+tree's backend has none, and the same afternoon showed why that matters.
+
+**The concrete miss.** `phy_ev_t` gained `lna_gain`, where `0xFF` means *unknown*.
+This backend zeroes the event and returned 0 — which is **G1**, a gain a receiver
+really does choose. Nothing here would have said so; it was found by reading the
+hub's new field, not by a check. The sentinel is now `PHY_LNA_UNKNOWN` with a
+`_Static_assert` in `phy.h` so both builds hold the constant, but **nothing tests
+that this backend uses it**, and the next field the contract gains has the same
+shape of trap waiting.
+
+What it needs is what the hub's suite needed: shims for the board and the clock,
+and a fake part under `radio_listen_poll`. The SX126x's is heavier than the
+RFM69's, which is the reason this is an entry rather than a commit — the driver
+here reaches the part through the SUBGHZ HAL rather than through injected
+callbacks, so the seam to fake is further down.
+
+**It is also the missing half of the control the seam exists for.** Identical
+logic over two PHYs separates *the logic is wrong* from *this driver is wrong*
+only when both backends are known to honour the same contract. One of them is now
+checked on a PC and the other is checked by reading it.
