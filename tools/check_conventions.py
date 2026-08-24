@@ -158,7 +158,7 @@ def check(files, only=None):
 # The library-to-be's include list, pinned per file. ROADMAP items 76 and 82.
 PORTABLE = {
     "Core/Src/exchange.c":   set(),
-    "Core/Src/hop.c":        {"hop.h", "radio_phy.h", "crypto.h"},
+    "Core/Src/hop.c":        {"hop.h", "radio_phy.h"},
     "Core/Src/beacon.c":     {"beacon.h", "radio_phy.h", "radio_protocol.h", "radio_slots.h"},
     "Core/Src/hublogic.c":   {"hublogic.h", "phy.h", "crypto.h", "exchange.h",
                               "radio_protocol.h", "radio_slots.h"},

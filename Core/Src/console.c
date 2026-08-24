@@ -19,12 +19,16 @@
 #include "pairing.h"
 #include "radio.h"
 #include "hop.h"
+#include "hop_prf.h"
 #include "radio_phy.h"
 #include "radio_slots.h"
 #include "telemetry.h"
 #include "clock.h"
 #include "vcp.h"
 #include "vectors.h"
+#if WL55_DEV_COMMANDS
+#include "hopref.h"
+#endif
 
 #define CON_CMD_LEN   32
 #define CON_RESP_LEN  768
@@ -399,11 +403,12 @@ static void do_hopsweep(const char *arg) {
         out("cycles is 1..5000\r\n");
         return;
     }
-    if (hop_init(&mine, vectors_hop_key(), RADIO_HOP_COUNT) != 0) {
+    if (hop_init(&mine, hop_prf_aes, (void *)vectors_hop_key(),
+                 RADIO_HOP_COUNT) != 0) {
         out("hopsweep: this build's hop_init refused\r\n");
         return;
     }
-    rc = hopref_sweep(ctl ? vectors_ref_prf_wrong() : vectors_ref_prf(),
+    rc = hopref_sweep(ctl ? hop_prf_swap32 : hop_prf_aes,
                       (void *)vectors_hop_key(),
                       RADIO_HOP_COUNT, other_channel, &mine,
                       start, cycles, &checked, &bad_sf);

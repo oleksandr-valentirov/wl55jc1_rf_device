@@ -17,6 +17,7 @@
 #include "store.h"
 #include "superframe.h"
 #include "hop.h"
+#include "hop_prf.h"
 #include "load.h"
 #include "hop_vectors.h"
 #include "vectors.h"
@@ -144,8 +145,9 @@ static join_result_t join_res;
 static hop_ctx_t hopper;
 
 static int hop_init_live(void) {
-    return hop_init(&hopper, join_res.paired ? join_res.hop_key : vec_hop_key,
-                    RADIO_HOP_COUNT);
+    const uint8_t *key = join_res.paired ? join_res.hop_key : vec_hop_key;
+
+    return hop_init(&hopper, hop_prf_aes, (void *)key, RADIO_HOP_COUNT);
 }
 
 static int join_is_paired(void) { return join_res.paired != 0u; }

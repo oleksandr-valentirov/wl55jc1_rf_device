@@ -138,6 +138,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/superframe.c
     Core/Src/beacon.c
     Core/Src/hop.c
+    Core/Src/hop_prf.c
     Core/Src/phy_sx126x.c
     Core/Src/hublogic.c
     Core/Src/load.c

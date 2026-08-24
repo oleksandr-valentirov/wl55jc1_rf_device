@@ -3,10 +3,10 @@
 #include <string.h>
 
 #include "hop.h"
+#include "hop_prf.h"
 #include "radio_phy.h"
 #include "vectors.h"
 #if WL55_DEV_COMMANDS
-#include "crypto.h"
 #include "hopref.h"
 #endif
 #include "hop_vectors.h"
@@ -26,7 +26,7 @@ static int8_t hop_deck_kat(void) {
     hop_ctx_t kat;
     uint8_t ch;
 
-    if (hop_init(&kat, HV_HOP_KEY, HOP_VEC_COUNT) != 0)
+    if (hop_init(&kat, hop_prf_aes, (void *)HV_HOP_KEY, HOP_VEC_COUNT) != 0)
         return -1;
     for (uint32_t i = 0; i < HOP_VEC_COUNT; i++) {
         if (hop_channel(&kat, i, &ch) != 0)
@@ -52,29 +52,8 @@ static int8_t hop_deck_kat(void) {
 }
 
 #if WL55_DEV_COMMANDS
-/* This part's real AES, which is what the hub's hop.c gets on the hub. */
-static int ref_prf(void *ctx, const uint8_t in[16], uint8_t out[16]) {
-    return crypto_aes_ecb_block((const uint8_t *)ctx, in, out);
-}
-
-/* The control, shipped with the instrument rather than after it.
- * radio_devices_docs/wl55_device/radio/hopping.md */
-static int ref_prf_wrong(void *ctx, const uint8_t in[16], uint8_t out[16]) {
-    return hop_swap32_model((const uint8_t *)ctx, in, out);
-}
-#endif
-
-#if WL55_DEV_COMMANDS
 const uint8_t *vectors_hop_key(void) {
     return HV_HOP_KEY;
-}
-
-hopref_prf_fn vectors_ref_prf(void) {
-    return ref_prf;
-}
-
-hopref_prf_fn vectors_ref_prf_wrong(void) {
-    return ref_prf_wrong;
 }
 #endif
 
@@ -100,10 +79,10 @@ void vectors_report(vectors_report_t *out) {
 #if WL55_DEV_COMMANDS
     /* Both implementations, one board, one PRF: nothing else varies.
      * radio_devices_docs/radio/hopping.md */
-    out->hop_ref_rc = hopref_deck_kat(ref_prf, (void *)HV_HOP_KEY, HOP_VEC_COUNT,
+    out->hop_ref_rc = hopref_deck_kat(hop_prf_aes, (void *)HV_HOP_KEY, HOP_VEC_COUNT,
                                       HV_DECK0, HV_DECK1, HV_SAMPLE_SF,
                                       HV_SAMPLE_CH, sizeof(HV_SAMPLE_CH));
-    out->hop_ref_ctl_rc = hopref_deck_kat(ref_prf_wrong, (void *)HV_HOP_KEY,
+    out->hop_ref_ctl_rc = hopref_deck_kat(hop_prf_swap32, (void *)HV_HOP_KEY,
                                           HOP_VEC_COUNT, HV_DECK0, HV_DECK1,
                                           HV_SAMPLE_SF, HV_SAMPLE_CH,
                                           sizeof(HV_SAMPLE_CH));

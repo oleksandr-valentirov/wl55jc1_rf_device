@@ -21,14 +21,6 @@ typedef struct {
 void vectors_report(vectors_report_t *out);
 
 #if WL55_DEV_COMMANDS
-#include "hopref.h"
-
 /** @brief The published hop key, so a sweep keys both implementations alike. */
 const uint8_t *vectors_hop_key(void);
-
-/** @brief This part's real AES, in the shape the hub's hop.c asks for. */
-hopref_prf_fn vectors_ref_prf(void);
-
-/** @brief The word-swapped model, so the sweep's negative case can be run. */
-hopref_prf_fn vectors_ref_prf_wrong(void);
 #endif

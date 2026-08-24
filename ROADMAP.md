@@ -579,7 +579,11 @@ silently converts the guard into a check of nothing.
 
 
 `hublogic.c`, `exchange.c`, `beacon.c`, `superframe.c` and `hop.c` include only
-`phy.h`, `crypto.h`, `timebase.h` and the shared contract headers. **That is what
+`phy.h`, `crypto.h`, `timebase.h` and the shared contract headers. **`hop.c` no
+longer needs even that much**: its PRF is injected at `hop_init` since
+2026-08-24, so the link layer declares a block function rather than nine
+primitives — [ADR-0030](../radio_devices_docs/radio/decisions/0030-radio-stack-is-the-link-layer-and-the-session-layer-is-a-separate-consumer.md)
+decision 2, and the checker's list moved with it. **That is what
 makes them the library** [ADR-0028](../radio_devices_docs/radio/decisions/0028-the-radio-is-a-library-and-the-region-is-a-compile-time-profile.md)
 extracts, and it is a property nothing currently checks.
 
@@ -599,7 +603,7 @@ freer than this entry assumed.** Beyond `<string.h>` and each file's own header:
 | File | Includes |
 |---|---|
 | `exchange.c` | **nothing** |
-| `hop.c` | `radio_phy.h`, `crypto.h` |
+| `hop.c` | `radio_phy.h` — **`crypto.h` left on 2026-08-24**, phase 9 step 2 |
 | `beacon.c` | `radio_phy.h`, `radio_protocol.h`, `radio_slots.h` |
 | `hublogic.c` | `phy.h`, `crypto.h`, `exchange.h`, `radio_protocol.h`, `radio_slots.h` |
 | `superframe.c` | **`timebase.h`** |

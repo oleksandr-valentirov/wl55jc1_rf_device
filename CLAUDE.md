@@ -59,7 +59,7 @@ start.**
 
 ```bash
 tools/check_conventions.sh
-tools/test_check_conventions.py  # 19 плечей; кожне падає, коли прибрати його правило
+tools/test_check_conventions.py  # 20 плечей; кожне падає, коли прибрати його правило
 tools/check_docs.py            # чи існує ще те, що документація називає
 tools/test_check_docs.py       # спільний корпус: чи погоджуються дві копії чекера
 ```

@@ -9,6 +9,7 @@
 #define hop_prf_t          hopref_prf_t
 #define hop_init           hopref_hop_init
 #define hop_channel        hopref_hop_channel
+#define hop_to_grid        hopref_hop_to_grid
 
 #include OPENHUB_HOP_H
 #include OPENHUB_HOP_C

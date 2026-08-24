@@ -29,7 +29,8 @@ static void eq(const char *name, const void *a, const void *b, size_t n) {
 
 /* Recovers the block from the input, so a differently built counter gets none.
  * radio_devices_docs/wl55_device/testing/host-tests.md */
-int crypto_aes_ecb_block(const uint8_t *key16, const uint8_t in[16], uint8_t out[16]) {
+static int replay_prf(void *ctx, const uint8_t in[16], uint8_t out[16]) {
+    const uint8_t *key16 = (const uint8_t *)ctx;
     static const uint8_t zeros[12] = {0};
     uint32_t cycle = ((uint32_t)in[0] << 24) | ((uint32_t)in[1] << 16) |
                      ((uint32_t)in[2] << 8) | in[3];
@@ -69,7 +70,7 @@ int main(void) {
           HOP_VECTORS_COUNT == RADIO_HOP_COUNT);
 
     /* The shuffle itself, over replayed AES. */
-    check("hop_init", hop_init(&ctx, HV_HOP_KEY, HOP_VEC_COUNT) == 0);
+    check("hop_init", hop_init(&ctx, replay_prf, (void *)HV_HOP_KEY, HOP_VEC_COUNT) == 0);
     int deck0 = 1, deck1 = 1;
     for (uint32_t i = 0; i < HOP_VEC_COUNT; i++) {
         if (hop_channel(&ctx, i, &ch) != 0 || ch != HV_DECK0[i])

@@ -61,7 +61,7 @@ BLOCK_ARMS = [
 def portable_corpus(**edits):
     files = {
         "Core/Src/exchange.c":   '#include <string.h>\n#include "exchange.h"\nint a;\n',
-        "Core/Src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\n#include "crypto.h"\nint b;\n',
+        "Core/Src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\nint b;\n',
         "Core/Src/beacon.c":     '#include "beacon.h"\n#include "radio_slots.h"\nint c;\n',
         "Core/Src/hublogic.c":   '#include "hublogic.h"\n#include "phy.h"\nint d;\n',
         "Core/Src/superframe.c": '#include "superframe.h"\n#include "timebase.h"\nint e;\n',
@@ -95,6 +95,11 @@ PORTABLE_ARMS = [
     ("tracked debt paid, entry left",
      portable_corpus(**{"Core__Inc__exchange_h":
                         '#include <stdint.h>\n#include "radio_protocol.h"\n'}), True),
+    # The PRF is injected now, so crypto.h coming back is a regression. ADR-0030.
+    ("crypto back in hop.c",
+     portable_corpus(**{"Core__Src__hop_c":
+                        '#include "hop.h"\n#include "radio_phy.h"\n'
+                        '#include "crypto.h"\nint b;\n'}), True),
 ]
 
 
