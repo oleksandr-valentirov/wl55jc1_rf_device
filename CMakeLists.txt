@@ -66,24 +66,22 @@ set(WL55_HUB_DEV_ID "0x751C5A3Bu" CACHE STRING "the device a HUB build invites")
 set(WL55_HUB_ID "0x574C3535u" CACHE STRING "the network id a HUB build claims")
 set(WL55_HUB_STALL_US "0" CACHE STRING "microseconds of injected service gap")
 
-# The wire vectors are included from the hub's tree, never copied.
+# The library is a submodule and nothing here is copied out of it. ADR-0028
 # radio_devices_docs/wl55_device/testing/host-tests.md
-if(NOT DEFINED OPENHUB_PATH)
-    if(DEFINED ENV{OPENHUB_PATH})
-        set(OPENHUB_PATH "$ENV{OPENHUB_PATH}")
-    else()
-        set(OPENHUB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../OpenHub")
-    endif()
-endif()
-set(WIRE_VECTORS "${OPENHUB_PATH}/Common/test/vectors")
-set(SHARED_PROTOCOL "${OPENHUB_PATH}/Common/inc")
+set(RADIO_STACK "${CMAKE_CURRENT_SOURCE_DIR}/radio_stack")
+set(WIRE_VECTORS "${RADIO_STACK}/test/vectors")
+set(SHARED_PROTOCOL "${RADIO_STACK}/inc")
+set(RADIO_PROFILES "${RADIO_STACK}/profiles")
 # Probed on a set this build includes; it was probing a retired one.
 # radio_devices_docs/wl55_device/testing/host-tests.md
 if(NOT EXISTS "${WIRE_VECTORS}/wire_v4.h")
     message(FATAL_ERROR
-        "Wire vectors not found at ${WIRE_VECTORS}. Pass -DOPENHUB_PATH=<hub repo>.")
+        "radio_stack is not checked out. Run: git submodule update --init radio_stack")
 endif()
 message(STATUS "Wire vectors: ${WIRE_VECTORS}")
+
+# The band this image transmits on, taken whole. ADR-0028 decision 3
+set(RADIO_PROFILE "RADIO_PROFILE_ASBUILT" CACHE STRING "the profile this image is built for")
 
 set(MX_GENERATED_IN  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/stm32cubemx/CMakeLists.txt")
 set(MX_GENERATED_OUT "${CMAKE_CURRENT_BINARY_DIR}/mx-stm32cubemx/CMakeLists.txt")
@@ -135,7 +133,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/vectors.c
     Core/Src/join.c
     Core/Src/store.c
-    Core/Src/hop.c
     Core/Src/hop_prf.c
     Core/Src/phy_sx126x.c
     Core/Src/hublogic.c
@@ -147,25 +144,16 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CUBE_FW_PATH}/Drivers/BSP/STM32WLxx_Nucleo/stm32wlxx_nucleo_radio.c
 )
 
-# The link layer and the schedule: deleting them there fails this build.
+# The library, one set of sources: deleting any of them there fails this build.
 # radio_devices_docs/specs/03-roadmap.md
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    ${OPENHUB_PATH}/Common/src/grid.c
-    ${OPENHUB_PATH}/Common/src/gridmaster.c
-    ${OPENHUB_PATH}/Common/src/superframe.c
-    ${OPENHUB_PATH}/Common/src/beacon.c
-    ${OPENHUB_PATH}/Common/src/exchange.c
+    ${RADIO_STACK}/src/grid.c
+    ${RADIO_STACK}/src/gridmaster.c
+    ${RADIO_STACK}/src/superframe.c
+    ${RADIO_STACK}/src/beacon.c
+    ${RADIO_STACK}/src/hop.c
+    ${RADIO_STACK}/src/exchange.c
 )
-
-# The hub's hop.c under renamed symbols, dev builds only. ADR-0029 decision 5.
-# radio_devices_docs/radio/hopping.md
-if(WL55_DEV_COMMANDS)
-    target_sources(${CMAKE_PROJECT_NAME} PRIVATE Core/Src/hopref.c)
-    set_source_files_properties(Core/Src/hopref.c PROPERTIES
-        COMPILE_OPTIONS "-iquote${SHARED_PROTOCOL}"
-        COMPILE_DEFINITIONS
-            "OPENHUB_HOP_H=\"${SHARED_PROTOCOL}/hop.h\";OPENHUB_HOP_C=\"${OPENHUB_PATH}/Common/src/hop.c\"")
-endif()
 
 # -O0 costs this file 371 ms a scalar multiplication against the PKA's 103 ms.
 # radio_devices_docs/radio/decisions/0025-x25519-replaces-p256.md
@@ -179,6 +167,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     third_party/monocypher
     ${WIRE_VECTORS}
     ${SHARED_PROTOCOL}
+    ${RADIO_PROFILES}
 )
 
 # Add project symbols (macros)
@@ -190,6 +179,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     WL55_HUB_DEV_ID=${WL55_HUB_DEV_ID}
     WL55_HUB_ID=${WL55_HUB_ID}
     WL55_HUB_STALL_US=${WL55_HUB_STALL_US}u
+    RADIO_PROFILE=${RADIO_PROFILE}
 )
 
 # Remove wrong libob.a library dependency when using cpp files

@@ -157,14 +157,22 @@ def check(files, only=None):
 
 # The library-to-be's include list, pinned per file. ROADMAP items 76 and 82.
 PORTABLE = {
-    "Core/Src/hop.c":        {"hop.h", "radio_phy.h"},
+    "radio_stack/src/grid.c":       {"grid.h"},
+    "radio_stack/src/gridmaster.c": {"gridmaster.h"},
+    "radio_stack/src/superframe.c": {"superframe.h", "grid.h", "timebase.h"},
+    "radio_stack/src/beacon.c":     {"beacon.h", "radio_phy.h", "radio_protocol.h",
+                                     "radio_slots.h"},
+    "radio_stack/src/hop.c":        {"hop.h", "radio_phy.h"},
+    "radio_stack/src/exchange.c":   {"exchange.h"},
+    "radio_stack/inc/hop.h":        set(),
+    "radio_stack/inc/exchange.h":   {"kdf.h", "radio_protocol.h"},
+    "radio_stack/inc/kdf.h":        set(),
+    # This tree's own portable file, and the only one left here.
     "Core/Src/hublogic.c":   {"hublogic.h", "gridmaster.h", "phy.h", "crypto.h",
                               "exchange.h", "radio_protocol.h", "radio_slots.h"},
     "Core/Inc/hublogic.h":   set(),
-    "Core/Inc/hop.h":        set(),
 }
-# superframe, beacon and exchange left this tree for OpenHub/Common, and are
-# guarded there. radio_devices_docs/specs/03-roadmap.md
+# The library is a submodule; this list reaches in, and so does the hub's.
 
 # Freestanding only; <stdio.h> pulls newlib into a file with no part yet.
 PORTABLE_ANGLE = {"stddef.h", "stdint.h", "stdbool.h", "string.h", "limits.h"}

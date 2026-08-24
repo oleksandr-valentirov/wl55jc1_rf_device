@@ -58,8 +58,11 @@ def load_allow(path):
 
 
 def source_text():
-    """This tree plus the hub's: a shared macro is defined over there."""
-    roots = ["."]
+    """This tree, the library and the hub's: a shared macro lives in one of them.
+
+    A submodule's files are not in the top-level ls-files, so radio_stack is its
+    own root - without it every page naming grid_advance reads as stale."""
+    roots = [".", "radio_stack"]
     if os.path.isdir("../OpenHub"):
         roots.append("../OpenHub")
     blob = []

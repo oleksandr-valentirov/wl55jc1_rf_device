@@ -26,9 +26,6 @@
 #include "clock.h"
 #include "vcp.h"
 #include "vectors.h"
-#if WL55_DEV_COMMANDS
-#include "hopref.h"
-#endif
 
 #define CON_CMD_LEN   32
 #define CON_RESP_LEN  768
@@ -190,17 +187,13 @@ static void show_vectors(void) {
     out("hop shared %s\r\nhop local  %s  %s\r\n", v.hop_shared, v.hop_local,
         v.hop_local_matches_shared ? "agrees" : "DISAGREES");
     out("hop deck   %s  rc %d\r\n",
-        v.hop_deck_rc == 0 ? "drawn by this build" : "MISMATCH", v.hop_deck_rc);
-#if WL55_DEV_COMMANDS
+        v.hop_deck_rc == 0 ? "drawn by the library here" : "MISMATCH",
+        v.hop_deck_rc);
     /* Printed either way: a verdict seen only on failure is unread. */
-    out("hop ref    %s  rc %d\r\n",
-        v.hop_ref_rc == 0 ? "the hub's hop.c drew it too" : "MISMATCH",
-        v.hop_ref_rc);
     out("hop ctl    %s  rc %d\r\n",
-        v.hop_ref_ctl_rc != 0 ? "wrong PRF refused, as it must be"
-                              : "VACUOUS - a wrong PRF was accepted",
-        v.hop_ref_ctl_rc);
-#endif
+        v.hop_deck_ctl_rc != 0 ? "wrong PRF refused, as it must be"
+                               : "VACUOUS - a wrong PRF was accepted",
+        v.hop_deck_ctl_rc);
 }
 
 static void show_load(void) {
@@ -397,65 +390,8 @@ static void do_opp(const char *arg) {
     }
     show_state();
 }
-
-/* The other implementation, so hopref.c needs no header of this tree's. */
-static int other_channel(void *ctx, uint32_t sf, uint8_t *ch) {
-    return hop_channel((hop_ctx_t *)ctx, sf, ch);
-}
-
-/* Whether swapping one hop.c for the other is a no-op. ADR-0029 decision 5.
- * radio_devices_docs/radio/hopping.md */
-static void do_hopsweep(const char *arg) {
-    hop_ctx_t mine;
-    uint32_t cycles = 0, checked = 0, bad_sf = 0;
-    uint32_t start = 0;
-    int8_t rc;
-    /* The negative case: a sweep never red reads in neither direction. */
-    uint8_t ctl = 0u;
-
-    if (strncmp(arg, "ctl ", 4) == 0) {
-        ctl = 1u;
-        arg += 4;
-    }
-    if (arg[0] < '0' || arg[0] > '9') {
-        out("hopsweep <cycles> [start-cycle]\r\n");
-        return;
-    }
-    for (const char *p = arg; *p >= '0' && *p <= '9'; p++)
-        cycles = cycles * 10u + (uint32_t)(*p - '0');
-    for (const char *p = arg; *p; p++)
-        if (*p == ' ') {
-            for (const char *q = p + 1; *q >= '0' && *q <= '9'; q++)
-                start = start * 10u + (uint32_t)(*q - '0');
-            break;
-        }
-    if (cycles == 0u || cycles > 5000u) {
-        out("cycles is 1..5000\r\n");
-        return;
-    }
-    if (hop_init(&mine, hop_prf_aes, (void *)vectors_hop_key(),
-                 RADIO_HOP_COUNT) != 0) {
-        out("hopsweep: this build's hop_init refused\r\n");
-        return;
-    }
-    rc = hopref_sweep(ctl ? hop_prf_swap32 : hop_prf_aes,
-                      (void *)vectors_hop_key(),
-                      RADIO_HOP_COUNT, other_channel, &mine,
-                      start, cycles, &checked, &bad_sf);
-    /* The denominator: a green line over an empty sweep is no pass. */
-    out("hopsweep%s cycles %lu from %lu  channels compared %lu  rc %d\r\n",
-        ctl ? " CONTROL" : "",
-        (unsigned long)cycles, (unsigned long)start,
-        (unsigned long)checked, rc);
-    if (ctl)
-        out("%s\r\n", rc != 0 ? "control refused it, as it must"
-                                : "VACUOUS - a wrong PRF swept clean");
-    else if (rc != 0)
-        out("first disagreement at superframe %lu\r\n", (unsigned long)bad_sf);
-    else
-        out("both implementations agree, and every cycle was a permutation\r\n");
-}
 #endif
+
 
 static void dispatch(void) {
     if (cmd_len == 0)
@@ -470,7 +406,6 @@ static void dispatch(void) {
     else if (strcmp(cmd, "release") == 0) do_release();
 #if WL55_DEV_COMMANDS
     else if (strncmp(cmd, "opp ", 4) == 0) do_opp(cmd + 4);
-    else if (strncmp(cmd, "hopsweep ", 9) == 0) do_hopsweep(cmd + 9);
 #endif
 #if WL55_ROLE_HUB
     else if (strcmp(cmd, "hub") == 0)     show_hub();

@@ -9,7 +9,6 @@ int hop_prf_aes(void *ctx, const uint8_t in[16], uint8_t out[16]) {
     return crypto_aes_ecb_block((const uint8_t *)ctx, in, out);
 }
 
-#if WL55_DEV_COMMANDS
 /* What a little-endian core hands the accelerator when nothing swaps it back.
  * radio_devices_docs/wl55_device/radio/hopping.md */
 static void swap32(uint8_t *b, uint32_t len) {
@@ -29,4 +28,3 @@ int hop_prf_swap32(void *ctx, const uint8_t in[16], uint8_t out[16]) {
     swap32(out, 16u);
     return 0;
 }
-#endif

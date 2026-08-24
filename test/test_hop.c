@@ -1,9 +1,10 @@
-/* The shuffle alone: the AES is replayed from the published stream, not computed.
- * radio_devices_docs/wl55_device/testing/host-tests.md */
+/* The reference implementation against hop_v1, and then against the library's.
+ * radio_devices_docs/radio/hopping.md */
 #include <stdio.h>
 #include <string.h>
 
 #include "hop.h"
+#include "hop_reference.h"
 #include "radio_phy.h"
 
 /* Both headers name their digest HOP_VECTORS_DIGEST; captured and undefined here.
@@ -16,6 +17,14 @@ static const char *const shared_digest = HOP_VECTORS_DIGEST;
 
 static int fails;
 static int prf_calls;
+
+/* Equivalence is about the shuffle, so the block need only be the same block. */
+static int sweep_prf(void *ctx, const uint8_t in[16], uint8_t out[16]) {
+    (void)ctx;
+    for (unsigned i = 0; i < 16u; i++)
+        out[i] = (uint8_t)(in[i] * 31u + i * 7u + 11u);
+    return 0;
+}
 
 static void check(const char *name, int ok) {
     printf("  %-46s %s\n", name, ok ? "ok" : "FAIL");
@@ -49,7 +58,7 @@ static int replay_prf(void *ctx, const uint8_t in[16], uint8_t out[16]) {
 }
 
 int main(void) {
-    hop_ctx_t ctx;
+    hopref_ctx_t ctx;
     uint8_t ch;
 
     printf("local %s   shared hop_v1 %s\n\n", local_digest, shared_digest);
@@ -70,14 +79,14 @@ int main(void) {
           HOP_VECTORS_COUNT == RADIO_HOP_COUNT);
 
     /* The shuffle itself, over replayed AES. */
-    check("hop_init", hop_init(&ctx, replay_prf, (void *)HV_HOP_KEY, HOP_VEC_COUNT) == 0);
+    check("hopref_init", hopref_init(&ctx, replay_prf, (void *)HV_HOP_KEY, HOP_VEC_COUNT) == 0);
     int deck0 = 1, deck1 = 1;
     for (uint32_t i = 0; i < HOP_VEC_COUNT; i++) {
-        if (hop_channel(&ctx, i, &ch) != 0 || ch != HV_DECK0[i])
+        if (hopref_channel(&ctx, i, &ch) != 0 || ch != HV_DECK0[i])
             deck0 = 0;
     }
     for (uint32_t i = 0; i < HOP_VEC_COUNT; i++) {
-        if (hop_channel(&ctx, HOP_VEC_COUNT + i, &ch) != 0 || ch != HV_DECK1[i])
+        if (hopref_channel(&ctx, HOP_VEC_COUNT + i, &ch) != 0 || ch != HV_DECK1[i])
             deck1 = 0;
     }
     check("cycle 0 deck from the replayed stream", deck0);
@@ -101,7 +110,7 @@ int main(void) {
             samples_beyond++;
             continue;
         }
-        if (hop_channel(&ctx, sf, &ch) != 0 || ch != HV_SAMPLE_CH[i])
+        if (hopref_channel(&ctx, sf, &ch) != 0 || ch != HV_SAMPLE_CH[i])
             samples_ok = 0;
         samples_checked++;
     }
@@ -119,9 +128,9 @@ int main(void) {
     for (uint8_t want = 0; want < HOP_VEC_COUNT; want++) {
         int seen0 = 0, seen1 = 0;
         for (uint32_t sf = 0; sf < HOP_VEC_COUNT; sf++) {
-            if (hop_channel(&ctx, sf, &ch) != 0 || ch == want)
+            if (hopref_channel(&ctx, sf, &ch) != 0 || ch == want)
                 seen0++;
-            if (hop_channel(&ctx, sf + HOP_VEC_COUNT, &ch) != 0 || ch == want)
+            if (hopref_channel(&ctx, sf + HOP_VEC_COUNT, &ch) != 0 || ch == want)
                 seen1++;
         }
         if (seen0 != 1 || seen1 != 1)
@@ -134,7 +143,7 @@ int main(void) {
     int adjacent_ok = 1, boundary_collides = 0;
     for (uint32_t sf = 0; sf + 1u < 2u * HOP_VEC_COUNT; sf++) {
         uint8_t a, b;
-        if (hop_channel(&ctx, sf, &a) != 0 || hop_channel(&ctx, sf + 1u, &b) != 0) {
+        if (hopref_channel(&ctx, sf, &a) != 0 || hopref_channel(&ctx, sf + 1u, &b) != 0) {
             adjacent_ok = 0;
             continue;
         }
@@ -148,6 +157,40 @@ int main(void) {
     check("an off-by-one counter changes channel inside a cycle", adjacent_ok);
     printf("  %-46s %s\n", "cycle boundary pair (1 in 28, not a failure)",
            boundary_collides ? "collides" : "differs");
+
+    /* The sweep, on a host, replacing the on-board one item 84 closed.
+     * radio_devices_docs/radio/hopping.md */
+    {
+        hopref_ctx_t ref;
+        hop_ctx_t lib;
+        uint32_t compared = 0;
+        int agree = 1, grid_agree = 1;
+
+        if (hopref_init(&ref, sweep_prf, NULL, HOP_VEC_COUNT) != 0 ||
+            hop_init(&lib, sweep_prf, NULL, HOP_VEC_COUNT) != 0) {
+            check("sweep: both implementations initialise", 0);
+        } else {
+            for (uint32_t sf = 0; sf < 200u * HOP_VEC_COUNT; sf++) {
+                uint8_t a, b;
+                if (hopref_channel(&ref, sf, &a) != 0 ||
+                    hop_channel(&lib, sf, &b) != 0) {
+                    agree = 0;
+                    break;
+                }
+                if (a != b)
+                    agree = 0;
+                compared++;
+            }
+            for (uint32_t i = 0; i < HOP_VEC_COUNT; i++)
+                if (hopref_to_grid(i) != hop_to_grid((uint8_t)i))
+                    grid_agree = 0;
+        }
+        /* An empty population agrees with everything. */
+        check("sweep: something was compared", compared == 200u * HOP_VEC_COUNT);
+        check("sweep: the two decks agree channel for channel", agree && compared);
+        check("sweep: the two grid mappings agree", grid_agree);
+        printf("  %-46s %u\n", "channels compared", compared);
+    }
 
     printf("\n%s\n", fails ? "FAILED" : "all checks passed");
     return fails != 0;

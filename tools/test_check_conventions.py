@@ -60,10 +60,18 @@ BLOCK_ARMS = [
 # The files check_portable still pins here, with allowed includes. Item 76.
 def portable_corpus(**edits):
     files = {
-        "Core/Src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\nint b;\n',
-        "Core/Src/hublogic.c":   '#include "hublogic.h"\n#include "phy.h"\nint d;\n',
+        "radio_stack/src/grid.c":       '#include "grid.h"\nint a;\n',
+        "radio_stack/src/gridmaster.c": '#include "gridmaster.h"\nint b;\n',
+        "radio_stack/src/superframe.c": '#include "superframe.h"\n#include "grid.h"\n'
+                                        '#include "timebase.h"\nint c;\n',
+        "radio_stack/src/beacon.c":     '#include "beacon.h"\n#include "radio_slots.h"\nint d;\n',
+        "radio_stack/src/hop.c":        '#include "hop.h"\n#include "radio_phy.h"\nint e;\n',
+        "radio_stack/src/exchange.c":   '#include "exchange.h"\nint f;\n',
+        "radio_stack/inc/hop.h":        "#include <stdint.h>\n",
+        "radio_stack/inc/exchange.h":   '#include <stdint.h>\n#include "kdf.h"\n',
+        "radio_stack/inc/kdf.h":        "#include <stdint.h>\n",
+        "Core/Src/hublogic.c":   '#include "hublogic.h"\n#include "phy.h"\nint g;\n',
         "Core/Inc/hublogic.h":   "#include <stdint.h>\n",
-        "Core/Inc/hop.h":        "#include <stdint.h>\n",
     }
     for name, body in edits.items():
         key = name.replace("__", "/").replace("_c", ".c").replace("_h", ".h")
@@ -87,12 +95,17 @@ PORTABLE_ARMS = [
                         '#include "hublogic.h"\n#include "phy.h"\n'
                         '#include <stdio.h>\nint d;\n'}), True),
     ("a listed file renamed away",
-     portable_corpus(**{"Core__Src__hop_c": None}), True),
+     portable_corpus(**{"radio_stack__src__hop_c": None}), True),
     # The PRF is injected now, so crypto.h coming back is a regression. ADR-0030.
     ("crypto back in hop.c",
-     portable_corpus(**{"Core__Src__hop_c":
+     portable_corpus(**{"radio_stack__src__hop_c":
                         '#include "hop.h"\n#include "radio_phy.h"\n'
-                        '#include "crypto.h"\nint b;\n'}), True),
+                        '#include "crypto.h"\nint e;\n'}), True),
+    # The include a listing cannot see, because a header reaches it. Item 82.
+    ("sha256.h back in exchange.h",
+     portable_corpus(**{"radio_stack__inc__exchange_h":
+                        '#include <stdint.h>\n#include "kdf.h"\n'
+                        '#include "sha256.h"\n'}), True),
 ]
 
 

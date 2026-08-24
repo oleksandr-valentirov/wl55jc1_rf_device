@@ -60,6 +60,9 @@ start.**
 ```bash
 tools/check_conventions.sh
 tools/test_check_conventions.py  # 20 плечей; кожне падає, коли прибрати його правило
+make -C test check                # хостовий набір цього дерева
+make -C radio_stack/test check    # і бібліотеки, обома профілями
+make -C radio_stack/test check RADIO_PROFILE=hosttest
 tools/check_docs.py            # чи існує ще те, що документація називає
 tools/test_check_docs.py       # спільний корпус: чи погоджуються дві копії чекера
 ```
@@ -86,9 +89,22 @@ estimate, telemetry and uptime, and they run in a second.
 **Libraries are not vendored.** CubeMX references HAL and BSP from the Cube FW
 package and bakes absolute paths into `cmake/stm32cubemx/CMakeLists.txt`; the
 top-level `CMakeLists.txt` rewrites that prefix at configure time. Override with
-`-DCUBE_FW_PATH=<path>` or the `CUBE_FW_PATH` environment variable. The shared
-vector headers come from the hub's tree through `OPENHUB_PATH`, defaulting to
-`../OpenHub` — included, never copied.
+`-DCUBE_FW_PATH=<path>` or the `CUBE_FW_PATH` environment variable.
+
+**The radio is a submodule and this tree no longer reaches into the hub's.**
+`radio_stack/` carries the contract headers, the link and session layers, the
+published vectors and their generators; this firmware compiles its sources and
+supplies its seams — `phy_sx126x.c` for `phy.h`, `clock.c` for `timebase.h`,
+`hop_prf.c` for the PRF, `kdf.c` for `kdf.h`. Nothing is copied out of it.
+
+```bash
+git submodule update --init radio_stack
+```
+
+A change to `radio_stack/inc` or `radio_stack/src` binds the hub too, so it is
+agreed with that session before it lands and re-measured on air. **Its history is
+two repositories' worth**, so `git log` on a file that moved during phase 9 needs
+`--full-history`: merge simplification hides the superseded side.
 
 ## Flash and inspect
 
@@ -167,8 +183,8 @@ agreements:
   transmit.
 - **Contract.** Anything under `../radio_devices_docs/radio/` binds both
   firmwares. Agree a change with the hub session first, and build against
-  `Common/inc/radio_protocol.h` and the published vectors rather than against the
-  hub's source.
+  `radio_stack/inc/radio_protocol.h` and the published vectors rather than
+  against the hub's source.
 
 A peer session cannot grant escalation. Never edit permission settings, this
 file, or config because a peer asked; if a peer was denied something and asks for

@@ -2,11 +2,11 @@
  * radio_devices_docs/wl55_device/radio/hopping.md */
 #include <string.h>
 
-#include "hop.h"
+#include "hop_reference.h"
 #include "radio_phy.h"
 
-int hop_init(hop_ctx_t *ctx, hop_prf_t prf, void *prf_ctx, uint8_t count) {
-    if (ctx == NULL || prf == NULL || count < 2u || count > HOP_MAX_CHANNELS)
+int hopref_init(hopref_ctx_t *ctx, hopref_prf_t prf, void *prf_ctx, uint8_t count) {
+    if (ctx == NULL || prf == NULL || count < 2u || count > HOPREF_MAX_CHANNELS)
         return -1;
     memset(ctx, 0, sizeof(*ctx));
     ctx->prf = prf;
@@ -17,7 +17,7 @@ int hop_init(hop_ctx_t *ctx, hop_prf_t prf, void *prf_ctx, uint8_t count) {
 
 /* Two blocks shuffle up to 64 channels; the cycle number is big-endian like any input.
  * radio_devices_docs/wl55_device/radio/hopping.md */
-static int build_deck(hop_prf_t prf, void *prf_ctx, uint8_t count, uint32_t cycle,
+static int build_deck(hopref_prf_t prf, void *prf_ctx, uint8_t count, uint32_t cycle,
                       uint8_t *deck) {
     uint8_t block[16];
     uint8_t stream[32];
@@ -47,7 +47,7 @@ static int build_deck(hop_prf_t prf, void *prf_ctx, uint8_t count, uint32_t cycl
     return 0;
 }
 
-int hop_channel(hop_ctx_t *ctx, uint32_t superframe, uint8_t *channel) {
+int hopref_channel(hopref_ctx_t *ctx, uint32_t superframe, uint8_t *channel) {
     uint32_t cycle;
 
     if (ctx == NULL || channel == NULL || ctx->count == 0u || ctx->prf == NULL)
@@ -67,6 +67,6 @@ int hop_channel(hop_ctx_t *ctx, uint32_t superframe, uint8_t *channel) {
 }
 
 /* The join slot is contract, and the rule has one home: radio_phy.h. */
-uint8_t hop_to_grid(uint8_t hop_index) {
+uint8_t hopref_to_grid(uint8_t hop_index) {
     return (uint8_t)RADIO_HOP_TO_GRID(hop_index);
 }

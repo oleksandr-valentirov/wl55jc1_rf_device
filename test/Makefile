@@ -1,15 +1,16 @@
 CFLAGS = -std=c11 -Wall -Wextra -Werror -O1 -g \
-         -I../Core/Inc -I../../OpenHub/Common/inc \
-         -I../../OpenHub/Common/test/vectors -I.
+         -I../Core/Inc -I../radio_stack/inc -I../radio_stack/profiles \
+         -I../radio_stack/test/vectors -I. \
+         -DRADIO_PROFILE=RADIO_PROFILE_ASBUILT
 
-# The link layer is one set of sources and they live in the hub's tree until
-# phase 9 step 6. Deleting them there fails this suite.
-LINK_LAYER = ../../OpenHub/Common/src/grid.c ../../OpenHub/Common/src/superframe.c \
-             ../../OpenHub/Common/src/beacon.c
+# The library, one set of sources, in the submodule. Deleting any of them there
+# fails this suite. radio_devices_docs/specs/03-roadmap.md
+LINK_LAYER = ../radio_stack/src/grid.c ../radio_stack/src/superframe.c \
+             ../radio_stack/src/beacon.c
 
 # The session layer's schedule, and this side's supply of the two hash
-# operations it declares. Same rule: deleting exchange.c there fails this suite.
-SESSION_LAYER = ../../OpenHub/Common/src/exchange.c ../Core/Src/kdf.c \
+# operations it declares.
+SESSION_LAYER = ../radio_stack/src/exchange.c ../Core/Src/kdf.c \
                 ../Core/Src/sha256.c
 
 TESTS = test_beacon test_exchange test_fingerprint test_hop test_hublogic \
@@ -25,8 +26,9 @@ TESTS = test_beacon test_exchange test_fingerprint test_hop test_hublogic \
 # several sources and every one of them writes the same .d file, so only the
 # last source's headers survive. That form looks like dependency tracking and
 # tracks one translation unit.
-VECTORS = $(wildcard ../../OpenHub/Common/test/vectors/*.h) \
-          $(wildcard ../../OpenHub/Common/inc/*.h) \
+VECTORS = $(wildcard ../radio_stack/test/vectors/*.h) \
+          $(wildcard ../radio_stack/inc/*.h) \
+          $(wildcard ../radio_stack/profiles/*.h) \
           $(wildcard ../Core/Inc/*.h)
 
 $(TESTS): $(VECTORS)
@@ -40,7 +42,9 @@ test_telemetry: test_telemetry.c host_timebase.c ../Core/Src/telemetry.c
 test_uptime: test_uptime.c host_timebase.c ../Core/Src/uptime.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
-test_hop: test_hop.c ../Core/Src/hop.c
+# Both implementations in one binary: the reference this tree kept, and the
+# library's. It is the only thing that compares them. ADR-0029 decision 5
+test_hop: test_hop.c hop_reference.c ../radio_stack/src/hop.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_period: test_period.c host_timebase.c $(LINK_LAYER)
@@ -59,7 +63,7 @@ test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Co
 # is where a sealed frame is checked.
 test_hublogic: test_hublogic.c fake_phy.c host_crypto.c host_timebase.c \
                ../Core/Src/hublogic.c $(SESSION_LAYER) \
-               ../../OpenHub/Common/src/grid.c ../../OpenHub/Common/src/gridmaster.c \
+               ../radio_stack/src/grid.c ../radio_stack/src/gridmaster.c \
                ../third_party/monocypher/monocypher.c
 	$(CC) $(CFLAGS) -I../third_party/monocypher -o $@ $(filter %.c,$^)
 

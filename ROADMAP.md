@@ -565,7 +565,7 @@ every frame to CRC, so filter width is not the deciding term in either direction
 
 `radio_devices_docs/radio/phy.md`.
 
-### 76. The library-to-be lives here and nothing stops it growing a HAL — `debt` `built 2026-08-24`
+### 76. The library-to-be lives here and nothing stops it growing a HAL — `debt` `built 2026-08-24` `moved 2026-08-25`
 
 **The guard is built and it was red on a real defect the moment it ran.**
 `check_portable()` in `tools/check_conventions.py` pins the include list of ten
@@ -615,6 +615,12 @@ has been bitten by most.**
 The check is cheap and mechanical — the include list of five files — and
 `tools/check_conventions.sh` is where it belongs, beside the rules that are
 already enforced rather than remembered.
+
+**The library-to-be is a library now**, and the list reaches into
+`radio_stack/` rather than into this tree. One portable file is left here:
+`hublogic.c`, the hub-role fixture. **The guard on a repository neither firmware
+owns lives in both of them** — the hub's checker carries the same list — and
+what that costs is `radio_stack/ROADMAP.md` item 3.
 
 **The list was measured before the check was written, and four of the five are
 freer than this entry assumed.** Beyond `<string.h>` and each file's own header:
@@ -708,7 +714,7 @@ Only visible because the records are timestamped; a counter shows the same
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
 
-### 84. This tree compiles the hub's `hop.c`, and that has an expiry — `debt` `contract`
+### 84. This tree compiles the hub's `hop.c`, and that has an expiry — `debt` `contract` `closed 2026-08-25`
 
 **Deliberate, and the first time either tree has compiled the other's `.c`.**
 `Core/Src/hopref.c` includes `OpenHub/Common/src/hop.c` by absolute path under
@@ -741,6 +747,25 @@ the reason this entry exists rather than a comment: nothing fails if
 `WL55_DEV_COMMANDS` is turned on in a build that should not have it.
 
 `radio_devices_docs/radio/hopping.md`.
+
+**Closed 2026-08-25, in the commit that made the library the only `hop.c`**, as
+this entry required. `Core/Src/hopref.c`, `hopref.h` and the `hopsweep` console
+command are deleted, and the firmware links `radio_stack/src/hop.c`.
+
+**What replaced the sweep is stronger in one way and weaker in another, and both
+are worth stating.** `Core/Src/hop.c` became `test/hop_reference.c` under renamed
+symbols — ADR-0029 decision 5 — and `test/test_hop.c` now runs both decks in one
+binary over **5 600 channels**, made red first by rotating the reference's own
+output by one slot. That runs on every `make check` rather than on a board when
+somebody remembers, which the on-board sweep never could.
+
+What is weaker: it is a host, so the comparison no longer runs through this
+part's CRYP. That loss is smaller than it looks — both implementations take the
+**same injected PRF**, so the cipher was never what the sweep compared — and the
+part is still covered, because `hop_deck_kat()` draws the published deck through
+CRYP on the board and **gained the negative control the sweep used to carry**:
+`hop_prf_swap32` is no longer behind `WL55_DEV_COMMANDS`, and `vectors` prints
+both verdicts. A KAT that has never been red reads in neither direction.
 
 ### 82. `exchange.h` reaches an implementation, and every include listing has missed it — `contract` `closed 2026-08-25`
 

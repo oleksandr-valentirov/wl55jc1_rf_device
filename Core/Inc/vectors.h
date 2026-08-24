@@ -10,11 +10,8 @@ typedef struct {
     const char *hop_shared;
     const char *hop_local;
     uint8_t     hop_local_matches_shared;
-    int8_t      hop_deck_rc;   /**< 0 when this board's hop.c drew the published deck */
-#if WL55_DEV_COMMANDS
-    int8_t      hop_ref_rc;    /**< 0 when the hub's hop.c drew the same deck here */
-    int8_t      hop_ref_ctl_rc;/**< non-zero required: a wrong PRF must be refused */
-#endif
+    int8_t      hop_deck_rc;   /**< 0 when the library drew the published deck here */
+    int8_t      hop_deck_ctl_rc;/**< non-zero required: a wrong PRF must be refused */
 } vectors_report_t;
 
 /** @brief Collects what this binary was built against, for reading aloud. */
