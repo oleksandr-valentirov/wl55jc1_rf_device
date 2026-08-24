@@ -880,7 +880,7 @@ correctly.
 
 `radio_devices_docs/wl55_device/testing/bench-harness.md`.
 
-### 61. The WL55 hub role never got ADR-0026, and the control fixture is dead — `blocking` `hub`
+### 61. The WL55 hub role never got ADR-0026, and the fix is a host test — `blocking` `hub`
 
 Eleven exchanges on 2026-08-23, node B built `-DWL55_ROLE=HUB`, node A on
 `632b261`:
@@ -896,23 +896,65 @@ accept  sent 0  paired 0  timeouts 11
 **Eleven of eleven, deterministic.** `sync == frames` exactly, so the hub heard the
 eleven requests and never a sync word for a confirmation.
 
-This is the hazard the aggregate roadmap's phase 8 named and mis-scoped: *with step
-4 alone the device holds a confirmation the hub is no longer waiting for.* Step 3
-landed on the **H755's CM4** and step 4 here, and **the WL55 hub role is a third
-image nobody counted.** `hublogic.c` still arms `HUB_EX_TIMEOUT_US = 2 *
-SUPERFRAME_US` from the response and knows nothing of `RADIO_PAIR_CONF_REGION`.
+The cause is known and it is not a radio: `hublogic.c` arms
+`HUB_EX_TIMEOUT_US = 2 * SUPERFRAME_US` from the response and knows nothing of
+`RADIO_PAIR_CONF_REGION`. This is the hazard the aggregate roadmap's phase 8 named
+and mis-scoped — *with step 4 alone the device holds a confirmation the hub is no
+longer waiting for* — and step 3 landed on the H755's CM4 while step 4 landed
+here. **The WL55 hub role is a third image nobody counted.**
 
 **The cost reaches past this bench.** The WL55-to-WL55 control produced the **4 of
 4** baseline the pairing page quotes against the H755's 5 of 10, and that fixture
 cannot now complete a pairing at all. Every comparison against that baseline is
-suspended until this is built.
+suspended. It also removes the deterministic fixture: the H755 completes an
+enrolment about half the time, so a control that has to *fail* eleven times out of
+eleven to mean anything cannot be run against it.
 
-It also removes the deterministic fixture — the H755 completes an enrolment about
-half the time, so a control that has to *fail* eleven times out of eleven to mean
-anything cannot be run against it.
+#### Re-scoped 2026-08-24: not a hand-port, a host test
+
+**This entry used to say build ADR-0026 into `hublogic.c`, and that is the wrong
+remedy for the right problem.** `hublogic.c` is a second copy of the hub's
+exchange logic, and it went stale in exactly the way ADR-0028 was written about:
+*a contract each side owns a copy of is a contract one side can revise alone.*
+Hand-porting the region model into it now buys a fixture that will go stale again
+at the next ADR reaching the wire, and adds a third implementation to keep in
+step until phase 9b subsumes it.
+
+**What to build instead is a host test for `hublogic.c` against a fake PHY.** It
+is the one piece of exchange logic in either tree that compiles for the host
+today — *the same protocol with no chip and no mailbox in it* — and the seam it
+reaches the radio through is the same nine operations
+`OpenHub/CM4/test/test_phy.c` already fakes on the other side. Making it
+ADR-0026-correct **under test** buys three things where the hand-port bought one:
+
+- the exchange scheduler becomes deterministic on a PC in seconds, where today
+  every one of its states is an air test;
+- the WL55 hub role comes back **as a by-product** of the same change, built for
+  the board rather than maintained for it;
+- it is phase 9a's third step
+  ([phy-seam.md](../radio_devices_docs/radio/phy-seam.md) § order of work) and the
+  bridge into 9b, so the work counts twice instead of being spent on a fixture.
+
+#### What the fixture is actually for, and what it is not
+
+Three values, and only the third is unique to it. **The second PHY as a control**
+is now partly delivered otherwise: the host suite separates logic from driver by
+removing the driver, which is stronger for a deterministic logic fault and cannot
+see anything that depends on time or air. **A deterministic fixture** — 11 of 11,
+4 of 4 — against the H755's coin flip is real and is worth having. And
+**localising K2 to the RFM69 side**: a WL55-to-WL55 link takes that part out of
+the question entirely, so pairing that works there and fails against the H755 puts
+the fault on the RFM69's side of the antenna. Nothing else on this bench does that.
+
+**It is not on the path to hub item 60.** The H755 already implements ADR-0026's
+region model — `ex_due_frame = ex_req_frame + 1`, `RADIO_EX_RSP_DUE`,
+`join_window_holds()`, and a `join_rx_deadline` set afresh per region — so its
+confirm leg is chased in its own source and its own counters. Item 60 carries that
+and does not wait on this.
 
 `radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md`,
-`bench/runs/2026-08-23-3/RESULTS.md`.
+`bench/runs/2026-08-23-3/RESULTS.md`. Related: item 80, the backend under this
+seam has no host test either.
 
 ### 58. A device with no console still cannot be released — `blocking`
 
