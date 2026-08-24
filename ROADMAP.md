@@ -19,10 +19,14 @@ sentence, so nothing anywhere disagrees when it goes stale. Name the file, the
 symbol, the commit or the ADR instead; those fail loudly when they move. The `hub`
 items below are the exception and are hints rather than identifiers.
 
-**Cleaned 2026-08-23**: eight closed entries retired, and the reasoning worth
-keeping from each moved to its page in `../radio_devices_docs` — see
+**Cleaned twice.** The first pass retired eight closed entries and moved the
+reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
-and `testing/bench-harness.md` under `wl55_device/`.
+and `testing/bench-harness.md` under `wl55_device/`. The second retired item 34,
+the hub's front end, which had been closed as an investigation and kept only as a
+pointer; its measurement is on `open_hub/radio/configuration.md` and item 4 now
+carries the one line about it that this queue needs. **A pointer is not an open
+item**, and keeping one here is how a closed investigation gets re-opened.
 
 **Status words**
 
@@ -111,10 +115,13 @@ count is `(R - 2*667ms) / w + 1`.
 789250 us.
 
 **Part of the floor is the hub's front end, measured, and it is not enough.**
-Item 34 is confirmed with a control that closed: dropping the hub's LNA from AGC
-to G6 lifts per-frame delivery 23 % → 34 %, which is 54 % → 71 % for at least one
-of three opportunities. **The requirement needs 78 % per frame for 99 % in one
-superframe.** A real gain, a third of the way, and this item stays blocking.
+Confirmed with a control that closed: dropping the hub's LNA from AGC to G6 lifts
+per-frame delivery 23 % → 34 %, which is 54 % → 71 % for at least one of three
+opportunities. **The requirement needs 78 % per frame for 99 % in one
+superframe.** A real gain, a third of the way, and this item stays blocking. The
+arms, the withdrawn PA exoneration and the three AGC registers still to look at
+are on `radio_devices_docs/open_hub/radio/configuration.md` § the gain step
+confirmed.
 
 **A floor of roughly 59 % loss is slot-independent and is not timing.** Per-slot
 delivery measured by the hub on 2026-08-22 against 8124 frames sent per slot:
@@ -275,7 +282,7 @@ where it was. That is the check, and it is only visible at the moment of a sweep
 
 **Why the sweep matters:** 4 -> 8 bytes restores the 1280 µs AGC settling budget
 of the 25 kbps era at unchanged rate, which is the one-sided test of the hub's
-preamble hypothesis in item 34. Side effect the hub must be told before it
+preamble hypothesis about the hub's front end. Side effect the hub must be told before it
 attributes frames: key-up is unchanged, so **the sync word moves 640 µs later
 inside the slot**.
 
@@ -441,7 +448,9 @@ anywhere in this firmware able to disagree - the unfalsifiable instrument the
 verification skill names, and why the shortfall had to be found from the other
 side of the antenna. It now prints `commanded, not measured`.
 
-Unflashed: the item 41 window is open on both boards and a flash would end it.
+**No longer held back by a window.** This was parked because item 41's window was
+open on both boards and a flash would have ended it; both have been reflashed
+since, so what remains is the measurement, not the wait for a slot to take it in.
 
 `Core/Src/radio.c` -> `radio_set_power`, `set_tx_params`, `radio_power_dbm`.
 `verification` skill § instruments.
@@ -478,24 +487,6 @@ been blocked on for a week - is recorded on the hub's page rather than here.
 `Core/Src/radio.c` -> `radio_set_power`, `radio_power_dbm`.
 `radio_devices_docs/open_hub/radio/configuration.md` § the level column passed its
 control. `verification` skill § windows, brackets and the arming.
-
-### 34. The hub's front end costs frames, and it is not the floor — `hub`
-
-**Closed as an investigation 2026-08-22 and kept as a pointer.** Stepping the
-hub's LNA from AGC to G6 lifts per-frame delivery **23 % -> 34 %**, confirmed with
-two runs whose block orders were reverses of each other, so drift is excluded
-rather than argued about. That is 54 % -> 71 % for at least one of three
-opportunities, against the **78 % per frame** the 1 s deadline needs.
-
-**A real +17 pp on the thing that matters, and still 28 pp short.** The `blocking`
-tag belongs to item 4, which owns the floor; this is a measured contribution with
-a mechanism. The remaining ~66 % is pre-sync and is the hub's knot.
-
-Everything this entry used to carry — the A-B-C power arms, the withdrawn PA
-exoneration, the settling-time negative, the level column's control, and the three
-AGC registers still to look at — is on the hub's page.
-
-`radio_devices_docs/open_hub/radio/configuration.md` § the gain step confirmed.
 
 ---
 
@@ -926,14 +917,14 @@ released only at a bench — and the second cannot cover the case this item exis
 for, which is a hub that is *gone*. Nothing should be built here until that is
 chosen.
 
-**Not verified on hardware, and one route to a paired node is still down.** The
-H755's roster is available again — the hub stopped caching tombstones on
-2026-08-23 and `device add` of a new id enrols — but the WL55-to-WL55 fixture
-cannot complete an exchange (item 61), so `release` has never had a pairing to
-release. What did run:
-both console arms link and flash, and the console-off build's record stream is
-unchanged — `!1 ident dev=583920721 gen=0 held=1 why=0`, the same identity, off
-flash. The control still owed is: release, read `ident`, confirm the id did not
-move, then pair and check the id the hub sees.
+**Not verified on hardware, and it is no longer blocked on anything.** The claim
+here was that no route to a paired node existed: the WL55-to-WL55 fixture cannot
+complete an exchange (item 61) and the H755's roster was full. **Both halves have
+moved** — the hub's store was rebuilt on the ADR-0027 ring and node A completed a
+full four-frame exchange into slot 2, so a real pairing is available to release.
+What has run so far: both console arms link and flash, and the console-off
+build's record stream is unchanged — the same identity, off flash. The control
+still owed is unchanged and now runnable: release, read `ident`, confirm the id
+did not move, then pair and check the id the hub sees.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
