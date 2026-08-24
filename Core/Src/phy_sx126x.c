@@ -41,10 +41,14 @@ int phy_transmit(const void *payload, uint8_t len, uint32_t *air_us) {
 }
 
 int phy_poll(phy_ev_t *ev) {
+    /* Counts the captures this part reports, so the field means what phy.h says. */
+    static uint32_t sync_seq;
     radio_rx_info_t info;
     int rc;
 
     memset(ev, 0, sizeof(*ev));
+    /* This part has no carrier-error or gain read on the seam's terms yet. */
+    ev->lna_gain = PHY_LNA_UNKNOWN;
     if (!radio_listening())
         return -1;
     rc = radio_listen_poll(ev->buf, sizeof(ev->buf), &info);
@@ -54,6 +58,9 @@ int phy_poll(phy_ev_t *ev) {
     }
     ev->sync_valid = info.capture_valid && info.capture_sync;
     ev->sync_us    = info.capture_us;
+    if (ev->sync_valid)
+        sync_seq++;
+    ev->sync_seq = sync_seq;
     if (rc == 0) {
         ev->kind     = PHY_EV_FRAME;
         ev->len      = info.len;
