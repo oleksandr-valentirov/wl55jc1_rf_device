@@ -1168,6 +1168,31 @@ second PHY running the identical logic, which is exactly what
 [ADR-0028](../radio_devices_docs/radio/decisions/0028-the-radio-is-a-library-and-the-region-is-a-compile-time-profile.md)
 §9a sequences early and what `-DWL55_ROLE=HUB` already half-provides.
 
+**The loss splits by channel, measured 2026-08-24 in run `2026-08-24-4`.** The
+same two boards, minutes apart, in one window:
+
+| hub -> device | channel | delivered |
+|---|---|---|
+| `PAIR_RSP`, `PAIR_ACCEPT` | 866.5 MHz, **fixed** | **7 of 7** |
+| join and data beacons | the 29-channel **hopping grid** | ~1 in 8 |
+
+Both nodes read `clock ... stale` with **15.6 s since the last beacon** against a
+2 s superframe, while paired and delivering - and in the same run not one
+hub->device enrolment frame was lost. **The downlink is not broken in general; it
+is broken on the grid**, which points at the hop sequence or the retune rather
+than at the transmitter or this receiver's sensitivity, and neither was a suspect
+before.
+
+It is an inference across two frame classes that differ in length and timing as
+well as in channel, so it is a hypothesis with evidence rather than a settled
+fact. **The arm that settles it is cheap**: hold a device on the join channel and
+compare beacon reception there against the grid.
+
+**And the period estimate does not order by level.** Node A is 11 dB stronger at
+the hub and reads `period 2 007 280 us` - 3 640 ppm, the same figure this entry
+already records - while node B reads `2 000 943 us`, 470 ppm. The weaker board has
+the better estimate, which the starvation loop above does not predict.
+
 ### 79. `linkjoin.py`'s `hub - nominal` column compares two different origins — `defect`
 
 It prints ~9200 µs on every delivered uplink, against a slot pitch of 9400 and a
