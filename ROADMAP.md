@@ -600,18 +600,24 @@ already enforced rather than remembered.
 **The list was measured before the check was written, and four of the five are
 freer than this entry assumed.** Beyond `<string.h>` and each file's own header:
 
-| File | Includes |
-|---|---|
-| `exchange.c` | **nothing** |
-| `hop.c` | `radio_phy.h` — **`crypto.h` left on 2026-08-24**, phase 9 step 2 |
-| `beacon.c` | `radio_phy.h`, `radio_protocol.h`, `radio_slots.h` |
-| `hublogic.c` | `phy.h`, `crypto.h`, `exchange.h`, `radio_protocol.h`, `radio_slots.h` |
-| `superframe.c` | **`timebase.h`** |
+| File | Includes | Guarded by |
+|---|---|---|
+| `exchange.c` | **nothing** | this tree |
+| `hop.c` | `radio_phy.h` — **`crypto.h` left on 2026-08-24**, phase 9 step 2 | this tree |
+| `hublogic.c` | `gridmaster.h`, `phy.h`, `crypto.h`, `exchange.h`, `radio_protocol.h`, `radio_slots.h` | this tree |
+| `beacon.c` | `radio_phy.h`, `radio_protocol.h`, `radio_slots.h` | **the hub's**, since 2026-08-24 |
+| `superframe.c` | `grid.h`, `timebase.h` | **the hub's**, since 2026-08-24 |
 
-Four of them need no clock at all. **The check must therefore pin the list per
+Most of them need no clock at all. **The check must therefore pin the list per
 file rather than allow one union across all five** — a union permits
 `hublogic.c` a `timebase.h` it does not have today, and a permission nobody
 needs is a permission that gets used.
+
+**Two of the five left this tree in phase 9 step 3** and the guard went with
+them: `OpenHub/tools/check_conventions.py` runs the same per-file check over
+`Common/`, with six mutation arms. The rows stay here with their new owner named,
+because a guard that quietly shrinks when code moves is worse than one nobody
+wrote — the coverage it used to have is what the next reader assumes.
 
 **The check must follow the local headers, not stop at the source file.**
 `exchange.c` includes `<string.h>` and `exchange.h` and nothing else — the
