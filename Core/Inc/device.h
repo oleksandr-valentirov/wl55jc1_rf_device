@@ -58,6 +58,9 @@ typedef struct device_view {
     uint32_t beacons_missed;
     uint32_t downlinks_applied;
     uint32_t downlinks_opened;  /**< every one that passed its tag, keepalives included */
+    uint32_t downlinks_repeat;  /**< carried the command already held, so nothing was applied */
+    uint32_t downlinks_replay;  /**< authenticated, and not newer than the durable floor */
+    uint32_t downlink_floor;    /**< the floor itself, 0 while none has been established */
 } device_view_t;
 
 /* Bounded by a physical act, and a release is one.

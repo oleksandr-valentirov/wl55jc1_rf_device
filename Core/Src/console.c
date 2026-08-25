@@ -96,6 +96,10 @@ static void show_state(void) {
         (unsigned long)v.reports_sent, (unsigned long)v.beacons_missed,
         (unsigned long)v.downlinks_applied, (unsigned long)v.downlinks_opened,
         (unsigned long)v.recover_entered);
+    /* Refused ones move neither number above, so silence there had two causes. */
+    out("dl      %lu repeat, %lu replay, floor %lu\r\n",
+        (unsigned long)v.downlinks_repeat, (unsigned long)v.downlinks_replay,
+        (unsigned long)v.downlink_floor);
     {
         /* The same numbers the report carries, before the air can be blamed. */
         sensor_reading_t m;

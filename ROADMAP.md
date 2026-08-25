@@ -1286,3 +1286,43 @@ against the capture.
 
 `radio_devices_docs/wl55_device/radio/pairing.md`,
 `bench/runs/2026-08-24-3/RESULTS.md`.
+
+
+### 82. `TLM_TX_DENY` names one gate whatever shut the other — `defect`
+
+The record that repeats every cycle is emitted with a **hard-coded**
+`TLM_WHY_FLOOR`:
+
+```c
+if (!may_send) {
+    tlm_emit(TLM_TX_DENY, sf, TLM_WHY_FLOOR, 0u, 0u);
+```
+
+`tx_allowed()` has two gates - `tx_floor_known`, and the floor comparison itself -
+and `TLM_TX_HOLD` distinguishes them correctly, `tx_floor_known ? TLM_WHY_FLOOR :
+TLM_WHY_NODOWNLINK`. But `TX_HOLD` fires **once**, behind `tx_hold_said`, so it is
+gone by the time anyone attaches to the VCP, while `TX_DENY` repeats forever with
+a constant in the reason column.
+
+**Cost, 2026-08-25.** A board that had opened no downlink since boot - so
+`tx_floor_known` was 0 and the reason was `NODOWNLINK` - emitted `tx.deny why=8`
+after every beacon it heard. `8` is `TLM_WHY_FLOOR`. Read at face value it says a
+floor exists and the superframe has not passed it, which is the opposite of the
+truth and points a reader at the hub's downlink content rather than at its
+absence. The console said the right thing in the same minute - `tx floor none yet
+- no downlink opened since boot` - so the two instruments disagreed and only the
+one nobody was watching was correct.
+
+**It is the `verification` skill's category in its cheapest form**: not a wrong
+number but a *category* in a reason column, where every value is a small integer
+and nothing distinguishes a constant from a reading. The fix is one expression,
+already written correctly eight lines above.
+
+`Core/Src/device.c` -> the `may_send` block; `radio_devices_docs/wl55_device/`.
+
+Related and **already fixed** in the same session: `dl_repeats` and `dl_replays`
+were incremented and read nowhere - not on the console, not in the snapshot - so a
+node refusing every downlink was indistinguishable from a hub sending none. They
+now print with the durable floor beside them as
+`dl <n> repeat, <n> replay, floor <n>`, which is what separated the two candidate
+causes of hub item 98 in one read.

@@ -999,6 +999,9 @@ void device_snapshot(device_view_t *v) {
     v->beacons_missed  = beacons_missed;
     v->downlinks_applied = dl_applied;
     v->downlinks_opened  = dl_opened;
+    v->downlinks_repeat  = dl_repeats;
+    v->downlinks_replay  = dl_replays;
+    v->downlink_floor    = dl_floor_known ? dl_floor : 0u;
 }
 
 void device_init(void) {

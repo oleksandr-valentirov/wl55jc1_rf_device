@@ -33,3 +33,4 @@ wl55_device/arch/README.md:store_reserve_counter  # named as the scheme ADR-0023
 wl55_device/radio/pairing.md:pair_init_key  # named in the past tense as pair_v3's seam, which ADR-0024 removed
 wl55_device/radio/pairing.md:pair_init_key_from_z1  # same passage: the seam that existed to reach verify without a curve
 wl55_device/radio/pairing.md:pair_init_test_seed_z1  # same passage: seeded the cached Z1 that no longer exists
+wl55_device/radio/timebase.md:test_period  # a real test binary in the radio_stack submodule, outside this scan
