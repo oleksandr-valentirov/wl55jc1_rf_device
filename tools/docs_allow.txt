@@ -34,3 +34,7 @@ wl55_device/radio/pairing.md:pair_init_key  # named in the past tense as pair_v3
 wl55_device/radio/pairing.md:pair_init_key_from_z1  # same passage: the seam that existed to reach verify without a curve
 wl55_device/radio/pairing.md:pair_init_test_seed_z1  # same passage: seeded the cached Z1 that no longer exists
 wl55_device/radio/timebase.md:test_period  # a real test binary in the radio_stack submodule, outside this scan
+
+# The SDR tools left OpenHub on 2026-08-25 for ~/.claude/skills/sdr/tools/, so
+# nothing this checker can scan defines their names any more.
+wl55_device/testing/README.md:rtl_sdr  # an external RTL-SDR binary, named in sdrdev.py in the sdr skill's tools
