@@ -19,7 +19,7 @@ sentence, so nothing anywhere disagrees when it goes stale. Name the file, the
 symbol, the commit or the ADR instead; those fail loudly when they move. The `hub`
 items below are the exception and are hints rather than identifiers.
 
-**Cleaned three times.** The first pass retired eight closed entries and moved the
+**Cleaned four times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
 and `testing/bench-harness.md` under `wl55_device/`. The second retired item 34,
@@ -31,6 +31,19 @@ third retired item 83, the hop deck KAT: it was verified on node B with its own
 control on 2026-08-24 and the reasoning worth keeping is on
 `radio/hopping.md` and `wl55_device/security/self-tests.md`. **A closed item that
 stays because its story is good is the same failure in a nicer costume.**
+
+**The fourth pass retired the four entries phase 9 closed**, each of which had
+been left here carrying a `closed`, `fixed` or `moved` tag — which is the same
+failure again, in the costume of a status column. Item 85, `release` refusing to
+reopen the window only it could reopen, its reasoning now on
+`wl55_device/testing/console.md`; item 76, the library-to-be's include guard,
+whose per-file rule and empty-population arm are on `radio/phy-seam.md` and whose
+duplication across two consumers is `../radio_stack/ROADMAP.md` item 3; item 84,
+this tree compiling the hub's `hop.c`, closed in the commit that made the
+library the only one, reasoning on `radio/hopping.md`; and item 82, `exchange.h`
+reaching an implementation, reasoning on `radio/phy-seam.md` § the crypto seam.
+**An item that records its own closure is a queue entry that will be re-read as
+open**, because the tag is the last thing scanned and the title is the first.
 
 **Status words**
 
@@ -193,25 +206,6 @@ moment (`verification` skill).
 ---
 
 ## Defects
-
-### 85. `release` refused to reopen a window only it could reopen — `defect` `fixed 2026-08-25`
-
-**Found by a batch of ten enrolment windows that turned out to be zero trials.**
-`do_release()` returned early on an unpaired node — *"not paired - nothing to
-release"* — and the enrolment window is reopened inside the branch it skipped.
-So a node that had dropped its pairing and let its 600 s window shut had no way
-back but a power cycle, while `state` printed *"power-cycle or `release` to
-reopen it"* and `release` declined.
-
-**The cost was not the power cycle.** Six windows ran with the node deaf and the
-hub's join window never opened, and the counters read exactly what six genuinely
-failed pairings read: zero requests sent, zero seen. **A procedure that does not
-execute is indistinguishable, in the numbers, from one that executes and fails**
-— and item 59 predicts four failures in five, so the reading was plausible.
-
-Fixed by separating the two things `release` did: `device_reopen_enrol()` is its
-own call, `device_release_pairing()` uses it, and the unpaired branch takes it
-and says what it did. `bench/journal/2026-08-25-architect.md`.
 
 ### 6. ADR-0023's transmit floor has never been exercised across a reset — `defect`
 
@@ -565,120 +559,6 @@ every frame to CRC, so filter width is not the deciding term in either direction
 
 `radio_devices_docs/radio/phy.md`.
 
-### 76. The library-to-be lives here and nothing stops it growing a HAL — `debt` `built 2026-08-24` `moved 2026-08-25`
-
-**The guard is built and it was red on a real defect the moment it ran.**
-`check_portable()` in `tools/check_conventions.py` pins the include list of ten
-files — the five sources and the five headers they reach through — and its first
-run refused `Core/Inc/exchange.h: "sha256.h"`, which is item 82 and was found by
-the check rather than by the reading that prompted it.
-
-**It is a tripwire rather than a permanent red.** `PORTABLE_OWED` carries that
-one known include with the item that closes it, so the check gates at zero today
-— and **it fails when the debt is paid and the entry is left behind**, the way
-the duty-cycle assert closes item 10. A guard that is always red is a guard
-somebody turns off.
-
-**Six arms in `tools/test_check_conventions.py`, and every one was run against
-the checker rather than argued** — 19 arms total now, from 13:
-
-| Arm | Refuses |
-|---|---|
-| `#include "stm32wlxx_hal.h"` in `hublogic.c` | the thing this entry was written for |
-| `#include <stdio.h>` in `beacon.c` | newlib in a file with no part chosen |
-| a listed file renamed away | **the empty population** — a stale list reads as a pass |
-| the tracked debt paid, entry left behind | the tripwire firing |
-| the clean corpus | must not fire |
-| no corpus at all — another tree | must not fire |
-
-**The empty-population arm is the one that matters most**, and it is why the
-check discriminates *none of the ten present* (another tree) from *some present*
-(this tree, with a file moved out from under the list). Without it a rename
-silently converts the guard into a check of nothing.
-
-
-`hublogic.c`, `exchange.c`, `beacon.c`, `superframe.c` and `hop.c` include only
-`phy.h`, `crypto.h`, `timebase.h` and the shared contract headers. **`hop.c` no
-longer needs even that much**: its PRF is injected at `hop_init` since
-2026-08-24, so the link layer declares a block function rather than nine
-primitives — [ADR-0030](../radio_devices_docs/radio/decisions/0030-radio-stack-is-the-link-layer-and-the-session-layer-is-a-separate-consumer.md)
-decision 2, and the checker's list moved with it. **That is what
-makes them the library** [ADR-0028](../radio_devices_docs/radio/decisions/0028-the-radio-is-a-library-and-the-region-is-a-compile-time-profile.md)
-extracts, and it is a property nothing currently checks.
-
-One `#include "stm32wlxx_hal.h"` added to any of them for a quick timestamp costs
-the extraction its whole argument, and it would compile, link, pass every host
-test and be found months later by whoever tries to build these files for another
-part. **A property that is load-bearing and unchecked is the class this project
-has been bitten by most.**
-
-The check is cheap and mechanical — the include list of five files — and
-`tools/check_conventions.sh` is where it belongs, beside the rules that are
-already enforced rather than remembered.
-
-**The library-to-be is a library now**, and the list reaches into
-`radio_stack/` rather than into this tree. One portable file is left here:
-`hublogic.c`, the hub-role fixture. **The guard on a repository neither firmware
-owns lives in both of them** — the hub's checker carries the same list — and
-what that costs is `radio_stack/ROADMAP.md` item 3.
-
-**The list was measured before the check was written, and four of the five are
-freer than this entry assumed.** Beyond `<string.h>` and each file's own header:
-
-| File | Includes | Guarded by |
-|---|---|---|
-| `exchange.c` | **nothing** | this tree |
-| `hop.c` | `radio_phy.h` — **`crypto.h` left on 2026-08-24**, phase 9 step 2 | this tree |
-| `hublogic.c` | `gridmaster.h`, `phy.h`, `crypto.h`, `exchange.h`, `radio_protocol.h`, `radio_slots.h` | this tree |
-| `beacon.c` | `radio_phy.h`, `radio_protocol.h`, `radio_slots.h` | **the hub's**, since 2026-08-24 |
-| `superframe.c` | `grid.h`, `timebase.h` | **the hub's**, since 2026-08-24 |
-
-Most of them need no clock at all. **The check must therefore pin the list per
-file rather than allow one union across all five** — a union permits
-`hublogic.c` a `timebase.h` it does not have today, and a permission nobody
-needs is a permission that gets used.
-
-**Two of the five left this tree in phase 9 step 3** and the guard went with
-them: `OpenHub/tools/check_conventions.py` runs the same per-file check over
-`Common/`, with six mutation arms. The rows stay here with their new owner named,
-because a guard that quietly shrinks when code moves is worse than one nobody
-wrote — the coverage it used to have is what the next reader assumes.
-
-**The check must follow the local headers, not stop at the source file.**
-`exchange.c` includes `<string.h>` and `exchange.h` and nothing else — the
-cleanest include line of the five — and `exchange.h` includes `sha256.h`, this
-tree's software SHA-256. **A check that reads only the five `.c` files would have
-passed that and called the file portable**, which is item 82 and is the exact
-failure this entry exists to prevent, arriving one level of indirection out. The
-five headers are on the list too, and the check walks the quoted includes it
-finds in them.
-
-**And `timebase.h` being on that list at all is a decision this tree had made
-without recording.** ADR-0028 names three backends the library declares —
-`phy.h`, `host.h`, `crypto.h` — and `superframe.c` has been including a fourth
-since before that record was written. The two trees' `timebase.h` do not agree
-on a surface: this one offers `micros()`, the hub offers `rfm_micros()`, and the
-hub's `timebase_us_to_ticks` / `timebase_ticks_to_us` have no equivalent here at
-all. Neither build can see the disagreement, because each compiles against its
-own.
-
-[ADR-0029](../radio_devices_docs/radio/decisions/0029-the-library-declares-four-backends-and-absorbs-no-control.md)
-settles it: four backends, and `timebase.h`'s declared surface is
-`timebase_now`, `timebase_elapsed`, `timebase_us_to_ticks`, `timebase_ticks_to_us`.
-This tree owes **`timebase_now()` as a one-line wrapper over `micros()`, and the
-two conversions as the identity** — they must exist even though nothing here
-scales, because a backend that omits what it does not need is a backend the
-library cannot be built against. The 77 existing `micros()` sites keep their
-name; only `superframe.c`'s four convert, as part of the move.
-
-The same record moves this file's `hop.c` **into the suite as a reference
-implementation** rather than deleting it: `test_hop.c` comparing this tree's deck
-against the hub's published `hop_v1` is the strongest check in either tree, and
-absorbing `hop.c` into the library would delete it while leaving every test
-green.
-
-`radio_devices_docs/radio/phy-seam.md`.
-
 ### 28. Recovery's predicted tier is unusable cold, not useless — `debt`
 
 Re-acquisition has two tiers: with a measured period it predicts the next
@@ -713,117 +593,6 @@ Only visible because the records are timestamped; a counter shows the same
 
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
-
-### 84. This tree compiles the hub's `hop.c`, and that has an expiry — `debt` `contract` `closed 2026-08-25`
-
-**Deliberate, and the first time either tree has compiled the other's `.c`.**
-`Core/Src/hopref.c` includes `OpenHub/Common/src/hop.c` by absolute path under
-renamed symbols — `-iquote` puts the hub's `Common/inc` ahead of `Core/Inc`, since
-the two `hop.h` collide by filename. Nothing is copied, so it cannot drift.
-
-**Behind `WL55_DEV_COMMANDS`, off in the product image, and in no test target**,
-so `make -C test check` and the product build are untouched and a device test run
-cannot fail for a reason only the hub session may fix. That was the objection that
-deleted the ctypes harness on 2026-08-24, and it is answered by the gate rather
-than argued away.
-
-**What it buys is the only check that can say the absorption changed nothing.**
-`vectors` reports the hub's `hop.c` drawing the published deck through this part's
-CRYP, and `hopsweep <cycles> [start]` walks whole cycles comparing both
-implementations channel by channel, with every cycle checked to be a permutation.
-Measured 2026-08-24 on both boards: 14 000 channels from cycle 0 and 5 600 from
-cycle 153 391 000, all agreeing, and the sweep made red first with a wrong PRF.
-That is what [ADR-0030](../radio_devices_docs/radio/decisions/0030-radio-stack-is-the-link-layer-and-the-session-layer-is-a-separate-consumer.md)
-decision 6 rests on.
-
-**It closes when the absorption lands**, not before and not much after: once both
-firmwares link one `hop.c` there is one implementation, no equivalence question,
-and this file is a second copy of the thing it was comparing. **Delete it in the
-same commit that makes the library the only `hop.c`** — a comparison of a thing
-with itself is the vacuous form, and it would stay green forever.
-
-**The guard is a convention and not a mechanism**, which is the honest state and
-the reason this entry exists rather than a comment: nothing fails if
-`WL55_DEV_COMMANDS` is turned on in a build that should not have it.
-
-`radio_devices_docs/radio/hopping.md`.
-
-**Closed 2026-08-25, in the commit that made the library the only `hop.c`**, as
-this entry required. `Core/Src/hopref.c`, `hopref.h` and the `hopsweep` console
-command are deleted, and the firmware links `radio_stack/src/hop.c`.
-
-**What replaced the sweep is stronger in one way and weaker in another, and both
-are worth stating.** `Core/Src/hop.c` became `test/hop_reference.c` under renamed
-symbols — ADR-0029 decision 5 — and `test/test_hop.c` now runs both decks in one
-binary over **5 600 channels**, made red first by rotating the reference's own
-output by one slot. That runs on every `make check` rather than on a board when
-somebody remembers, which the on-board sweep never could.
-
-What is weaker: it is a host, so the comparison no longer runs through this
-part's CRYP. That loss is smaller than it looks — both implementations take the
-**same injected PRF**, so the cipher was never what the sweep compared — and the
-part is still covered, because `hop_deck_kat()` draws the published deck through
-CRYP on the board and **gained the negative control the sweep used to carry**:
-`hop_prf_swap32` is no longer behind `WL55_DEV_COMMANDS`, and `vectors` prints
-both verdicts. A KAT that has never been red reads in neither direction.
-
-### 82. `exchange.h` reaches an implementation, and every include listing has missed it — `contract` `closed 2026-08-25`
-
-`exchange.c` is the file ADR-0028 singles out as the most portable of the five:
-it includes `<string.h>` and `exchange.h` and nothing else, and it computes
-**both** confirmations from one key schedule, so the logic has never needed to
-know which end it is.
-
-**Its header is where the dependency is.** `exchange.h` includes `sha256.h` —
-this tree's own **software** SHA-256 — and `exchange.c` calls `hkdf_sha256` and
-`hmac_sha256` through it:
-
-    exchange.c  →  exchange.h  →  sha256.h      /* the implementation, not a seam */
-
-So the file that looks perfectly portable from a listing is bound to a primitive
-[ADR-0012](../radio_devices_docs/radio/decisions/0012-wire-format-is-the-contract.md)
-puts firmly on the per-platform side: SHA-256 is software here and the HASH
-peripheral on the hub. **A listing of includes cannot see this, and that is the
-whole finding** — it is the same shape as item 76's, one level of indirection
-further out.
-
-The hub, checked by grep on 2026-08-24, has **no `hkdf_sha256` and no
-`hmac_sha256` at all**. It has the entire derivation behind `crypto_pair_derive()`.
-The seam therefore falls below the key schedule here and above it there.
-
-What this tree owes, per
-[ADR-0029](../radio_devices_docs/radio/decisions/0029-the-library-declares-four-backends-and-absorbs-no-control.md):
-`crypto_hkdf_sha256` and `crypto_hmac_sha256` declared on `crypto.h` and supplied
-from `sha256.c`, which already has both; `exchange.h` stops including `sha256.h`;
-and `sha256.h` stays in this tree, out of the library, because it is an
-implementation of a primitive the other side does in hardware.
-
-**No new cryptography is written on either side** — both trees already have a
-working HKDF and HMAC, and what moves is which side owns the schedule built on
-them. The hub's half is its item 80, and the pairing must be re-measured on air
-afterwards: the pair vectors would agree by construction once one schedule serves
-both ends, which is the green check that means nothing.
-
-**Closed 2026-08-25.** `exchange.{c,h}` left this tree for `OpenHub/Common/`,
-where both firmwares compile them; `Core/Src/kdf.c` is this side's supply of the
-two operations and is the only file that now sees `sha256.h` from that
-direction. `PORTABLE_OWED` held exactly one entry, this one, and **the tripwire
-fired on the commit that paid it** — which is what it was written for. The table
-is empty now and the mechanism went with it; re-adding it is four lines when the
-next debt of the shape appears.
-
-**One clause did not survive contact and is worth naming.** ADR-0029 declares a
-nine-name `crypto.h` as the backend. The library declares `kdf.h` with **two**,
-because that is what the schedule calls — a nine-name header would have been a
-name broader than its coverage, and `crypto.h` is already on this tree's include
-path, so the shared one would have been silently shadowed exactly as
-`timebase.h` was in step 1.
-
-**The last line above was also wrong**, and the correction is in ADR-0029 beside
-the claim: `pair_v4` is generated from the specification by a third
-implementation, so reproducing that **immutable** set after the merge is a real
-control rather than agreement by construction. It is one of the two witnesses
-step 5 was verified on.
 
 ### 9. `UPLINK_AIM_US` is a contract number that lives on one side — `contract`
 
@@ -1152,7 +921,7 @@ step until phase 9b subsumes it.
 **What to build instead is a host test for `hublogic.c` against a fake PHY.** It
 is the one piece of exchange logic in either tree that compiles for the host
 today — *the same protocol with no chip and no mailbox in it* — and the seam it
-reaches the radio through is the same nine operations
+reaches the radio through is the same eight calls
 `OpenHub/CM4/test/test_phy.c` already fakes on the other side. Making it
 ADR-0026-correct **under test** buys three things where the hand-port bought one:
 

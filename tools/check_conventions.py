@@ -155,7 +155,7 @@ def check(files, only=None):
                         own_line.append("%s:%d" % (p, n))
     return long_blocks, own_line, foreign, long_brief
 
-# The library-to-be's include list, pinned per file. ROADMAP items 76 and 82.
+# The library's include list, pinned per file. ADR-0028, ADR-0029.
 PORTABLE = {
     "radio_stack/src/grid.c":       {"grid.h"},
     "radio_stack/src/gridmaster.c": {"gridmaster.h"},
@@ -177,12 +177,12 @@ PORTABLE = {
 # Freestanding only; <stdio.h> pulls newlib into a file with no part yet.
 PORTABLE_ANGLE = {"stddef.h", "stdint.h", "stdbool.h", "string.h", "limits.h"}
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.M)
-# Tracked debts, each a tripwire: it fails once the debt is paid. Item 82's fired.
+# Tracked debts, each a tripwire: it fails once the debt is paid. The last one fired.
 PORTABLE_OWED = {}
 
 
 def check_portable():
-    """The include list of the library-to-be; ROADMAP item 76.
+    """The include list of the library; ../radio_stack/ROADMAP.md item 3.
 
     Why each file's list is what it is, and why the list is per file rather than
     a union, is radio_devices_docs ADR-0028 and ADR-0029.
@@ -267,7 +267,7 @@ def main():
                          ("comment blocks over 100 characters", longb),
                          ("struct-field comments on their own line", own),
                          ("Doxygen @brief over 100 characters", brief),
-                         ("includes outside the library-to-be's list (item 76)", port),
+                         ("includes outside the library's list", port),
                          ("the library checkout that is compiled", sub)):
         print("== %s: %d ==" % (title, len(items)))
         for i in items[:15]:
