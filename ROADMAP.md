@@ -1168,8 +1168,18 @@ frames on the grid**, on a population four times the 31 superframes above.
 `../bench/runs/2026-08-25-1/RESULT.md`.
 
 The hub's transmitter is not the suspect: the capture holds its frames. The band
-is not the suspect either — `bandscan.py` over the run's own window puts all 29
-grid channels at 1.17–1.49 % with nothing foreign on any of them.
+is not the suspect either — **0 of 29 grid channels stand clear of the capture's
+own band reference**, on two captures of 2026-08-25 twelve hours apart, with one
+emitter outside the grid at 868.000 MHz in both.
+
+**That conclusion is unchanged and the reason under it is new, which is why the
+old numbers are gone from this entry.** It used to read *all 29 grid channels at
+1.17–1.49 % with nothing foreign on any of them* — and under the criterion the
+tool then stated, `--busy 1.0`, 1.17 % **is** busy, so the stated rule should have
+condemned all 29 and this page concluded the opposite. The exoneration was read
+off the numbers by eye. It is now produced by the criterion, so it can be
+re-derived from this line: `radio_devices_docs/specs/06-regression.md` RG-A-9,
+`bench/runs/2026-08-25-*/bandscan.REANALYSED.txt`.
 
 **Losing sync costs the period estimate, which costs the next beacon.**
 `SUPERFRAME_FRESH_US` is `2 * SUPERFRAME_US`, so two missed beacons drop sync;
