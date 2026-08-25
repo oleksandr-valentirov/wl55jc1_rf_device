@@ -1144,8 +1144,28 @@ window that held both instruments at once.
 | the air, over 31 superframes | this device |
 |---|---|
 | **31 beacons, one per superframe**, each on a grid channel | node A: `sync.lost since=4000027` repeatedly, `since beacon` 5.8–12.9 s |
-| **15 downlinks** | node A: **`downlinks 0 of 5`** |
+| ~~**15 downlinks**~~ | ~~node A: **`downlinks 0 of 5`**~~ — **withdrawn, see below** |
 | join-channel bursts on channel 14 | node B: **0 invitations across 68 listening slices**, `sync=0` for a whole 10-minute window |
+
+**The middle row said the opposite of what it was read as, and regression
+`2026-08-25-1` withdrew it.** `downlinks A of B` is `dl_applied` of `dl_opened`:
+`dl_opened` counts every downlink that passed its tag and its replay floor, and
+`dl_applied` only those carrying a **new command** — a keepalive returns before
+the increment. So `0 of 5` reads *five downlinks arrived and none carried a
+command*, and the hub agrees from the other side of the antenna with
+`cmds 0 sent, 0 acked, 0 lost`. It was never evidence that the device heard
+nothing; it is evidence that it heard five.
+
+**This entry's conclusion is unchanged.** The other two rows are independent, and
+the channel split below is stronger than any of them. What changes is that one of
+the three witnesses was miscounted, and the console's heading is what misread —
+both counters are incremented correctly, on the right paths.
+
+**And the same question now has a far better answer.** In that run's window the
+hub reported `downlink 6978 sent` while node A reported **1738 opened**, both
+counters read within the hour over the same ~28 000 s: **24.9 % of hub→device
+frames on the grid**, on a population four times the 31 superframes above.
+`../bench/runs/2026-08-25-1/RESULT.md`.
 
 The hub's transmitter is not the suspect: the capture holds its frames. The band
 is not the suspect either — `bandscan.py` over the run's own window puts all 29
