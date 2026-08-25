@@ -127,14 +127,26 @@ class Hub:
 
     def seed(self):
         """Cursor first, then state: a replayed event rewrites a field with its own
-        value, while the reverse order would drop an arrival."""
+        value, while the reverse order would drop an arrival.
+
+        **The cursor is `last_id` and never the last row of a page.** `/api/events`
+        answers `since` with at most `limit` rows, default 200, taken from the
+        *oldest* end - so reading `since=0` and keeping `events[-1]["id"]` seeds
+        the cursor at the 200th oldest event of a buffer holding up to 2000, and
+        the first polls then replay everything after it. Every historical uplink
+        in that backlog arrives as an arrival with a superframe from before the
+        window, joins nothing, and is counted as a hub-only arrival. That is the
+        151 unmatched arrivals of run 2026-08-25-2, against 38 frames the hub's
+        own ladder counted in the window - a population four times larger than
+        the air could produce, which is what gave it away. The same response
+        carries `last_id` and it was being thrown away.
+        """
         health = self.get("/api/health")
         if not health.get("hub_connected"):
             sys.exit("server is up and no hub is connected - check `telem` on the hub")
         if not health.get("schema_agrees_with_hub"):
             sys.stderr.write("! schema disagrees with the hub; fields may arrive by id\n")
-        events = self.get("/api/events?since=0")["events"]
-        self.cursor = events[-1]["id"] if events else 0
+        self.cursor = self.get("/api/events?since=0&limit=1")["last_id"]
         # A list here and a dict on /api/snapshot and the stream: take either.
         devices = self.get("/api/devices")["devices"]
         if isinstance(devices, dict):
@@ -323,7 +335,13 @@ def summarise(rows, lost, g, hub_only, substituted):
     if lost:
         print("! %d device record(s) lost on the VCP: the tx count is a floor" % lost)
     if hub_only:
-        print("! %d hub arrival(s) had no device record in the window" % hub_only)
+        share = 100.0 * hub_only / max(1, hub_only + got)
+        print("! %d hub arrival(s) had no device record in the window, %.0f%% of"
+              " the joined population" % (hub_only, share))
+        if share >= 25.0:
+            print("! NOT GRADEABLE: 06-regression.md 6.2 refuses a window whose"
+                  " non-vacuity figure is a large fraction. Do not quote the"
+                  " delivery figure above.")
     if substituted:
         print("! %d arrival(s) carried the previous frame's value, not their own:"
               " the server's diff omitted the field" % substituted)
