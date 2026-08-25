@@ -26,6 +26,7 @@ import argparse
 import json
 import math
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -40,7 +41,11 @@ from telemetry import Stream                                    # noqa: E402
 
 import serial                                                   # noqa: E402
 
-HEADER_DIR = "../OpenHub/Common/inc"
+# The library's, not the hub's; this tree no longer reaches ../OpenHub. ADR-0032
+HEADER_DIR = "radio_stack/inc"
+PROFILE_DIR = "radio_stack/profiles"
+# Read from the build, never restated: a tool naming a number names a band.
+PROFILE_FROM = "CMakeLists.txt"
 
 # Copied constants are ROADMAP item 43; a host tool is not exempt.
 PROBE = r"""
@@ -58,13 +63,26 @@ int main(void) {
 """
 
 
+def built_profile():
+    """The profile this tree builds, or an exception rather than a guess."""
+    m = re.search(r'set\(RADIO_PROFILE "(RADIO_PROFILE_[A-Z]+)"',
+                  open(PROFILE_FROM, encoding="utf-8").read())
+    if not m:
+        sys.exit("no RADIO_PROFILE in %s: this tool must not choose a band"
+                 % PROFILE_FROM)
+    return m.group(1)
+
+
 def geometry(header_dir):
     """The slot geometry, compiled from the header both firmwares build against."""
     with tempfile.TemporaryDirectory() as tmp:
         src, exe = os.path.join(tmp, "g.c"), os.path.join(tmp, "g")
         with open(src, "w") as f:
             f.write(PROBE)
-        cc = subprocess.run(["cc", "-I", header_dir, src, "-o", exe],
+        cc = subprocess.run(["cc", "-std=c11", "-I", header_dir,
+                             "-I", PROFILE_DIR,
+                             "-DRADIO_PROFILE=%s" % built_profile(),
+                             src, "-o", exe],
                             capture_output=True, text=True)
         if cc.returncode:
             sys.exit("cannot compile the geometry probe against %s:\n%s"
