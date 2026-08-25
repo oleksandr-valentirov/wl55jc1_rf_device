@@ -131,7 +131,7 @@ def main(argv=None):
             for name in re.findall(r"\b(?:RADIO|STORE|BEACON|SUPERFRAME|TLM"
                                    r"|FRAME|CRYPTO|IPC)_[A-Z0-9_]+\b", body):
                 if name not in words and not allowed(name):
-                    missing_ident.append("%s: %s" % (rel, name))
+                    missing_ident.append("%s:%s" % (rel, name))
 
         for span in FENCE.finditer(text):
             if span.group(1) in NOT_C:
@@ -140,11 +140,11 @@ def main(argv=None):
                 if "_" not in name or name.startswith(FOREIGN):
                     continue
                 if name not in words and not allowed(name):
-                    missing_ident.append("%s: %s()" % (rel, name))
+                    missing_ident.append("%s:%s" % (rel, name))
         for m in MACRO.finditer(text):
             name = m.group(1)
             if name not in words and not allowed(name):
-                missing_ident.append("%s: %s" % (rel, name))
+                missing_ident.append("%s:%s" % (rel, name))
         for m in IDENT.finditer(text):
             name = m.group(1)
             if len(name) < 4 or "_" not in name:
@@ -152,14 +152,14 @@ def main(argv=None):
             if name.isupper() or name.startswith(FOREIGN):
                 continue
             if name not in words and not allowed(name):
-                missing_ident.append("%s: %s()" % (rel, name))
+                missing_ident.append("%s:%s" % (rel, name))
         for m in PATH.finditer(text):
             p = m.group(1)
             if p.endswith(".md") or p.startswith("../") or allowed(p):
                 continue
             if not any(os.path.exists(os.path.join(r, p))
                        for r in (".", "..", "../OpenHub")):
-                missing_path.append("%s: %s" % (rel, p))
+                missing_path.append("%s:%s" % (rel, p))
 
     missing_ident = sorted(set(missing_ident))
     missing_path = sorted(set(missing_path))
@@ -170,6 +170,11 @@ def main(argv=None):
         print("== %s: %d ==" % (title, len(items)))
         for i in items:
             print("   " + i)
+    # Each line above IS the exemption key, ready to paste.
+    if missing_ident or missing_path:
+        print()
+        print("   to exempt one, add it to %s with a reason:" % ALLOW)
+        print("   %s  # why the code does not define it" % (missing_ident or missing_path)[0])
     return 1 if (missing_ident or missing_path or bad) else 0
 
 
