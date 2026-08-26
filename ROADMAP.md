@@ -1100,7 +1100,7 @@ did not move, then pair and check the id the hub sees.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
 
-### 77. The k = 3 geometry lost its only writer in the console move — `defect` `blocking`
+### 77. REQ-F-10 has no event, so k = 3 has nothing that could fire it — `defect` `blocking`
 
 `report_opp` and `report_opp_all` are declared at `Core/Src/device.c:380` and
 `:382`, read at `:707`, `:708` and `:713`, and **assigned nowhere in this tree**.
@@ -1150,15 +1150,52 @@ one that writes.
 because run `2026-08-24-1` had to infer `k` from a duty cycle, and no run should
 have to again.
 
-**What is still owed is the autonomous grant, and it is a design question**: a hub
-grant in the downlink — what the field name and `arm_opp`'s `0xFF` imply, and what
-the downlink was thought too lossy to carry until 2026-08-26 — a local policy on a missed
-acknowledgement, or a compile-time default. The duty cycle constrains the answer
-rather than settling it: k = 3 is 1.200 % *every superframe* and 0.150 % at
-`report every 8`, so the grant must carry the cadence with it.
+**The autonomous grant this entry used to ask for is not owed, and the arithmetic
+says why.** Settled 2026-08-26 on
+[`radio/tdma.md`](../radio_devices_docs/radio/tdma.md) § *no sustained
+configuration meets the deadline inside the duty budget*: at `report_every` 1,
+k = 3 closes the deadline at a 778 ms gap and costs **12 000 ppm** against the
+**10 000** of `h1.4`; k = 2 is legal and cannot reach 1000 ms at any stride; every
+sparser cadence puts the gap at `2000 N - 1222` ms, 14.8 s at the default 8.
+**Every sustained setting is on one side or the other**, so a mechanism granting
+one — by downlink, by local policy or by a compile-time default — would grant
+either an illegal transmitter or a configuration that misses the requirement it
+exists for. Closing that would need a **17 % shorter frame or a 20 % faster bit
+rate**, both contract changes to be re-measured on air.
 
-**REQ-F-10 stays `not met` until that lands**, because an operator holding a
-console command is not a mechanism a requirement can rest on.
+**What is legal is the burst**, and the regulation says so from its own side:
+`Tobs` is an hour and the quantity is cumulative ON time
+([`radio/phy.md`](../radio_devices_docs/radio/phy.md), EN 300 220-2 cl. 4.4.3.2),
+so one event costs three frames' air and nothing for the silence around it.
+**k = 3 is an event mechanism and never an operating mode.**
+
+**So what is missing is the event, and this firmware has none.** `sensor.h` and
+`sensor.c` carry no threshold, no interrupt and no notion of one; `sensor_read()`
+is called once inside `report_service`, and the transmit is gated on
+`(sf % join_res.report_every) == 0`. Four pieces are owed and only one of them is
+a contract change:
+
+- **what an event is on this board** — `sensor.c`, and it is the developer's
+  choice before it is anyone's code;
+- **a transmit that is not gated on the report cadence** and uses every
+  `RADIO_SLOT_OPPS` — `device.c`. Neither end of the link has to move for it: the
+  hub opens one receive window across the whole uplink region **every** superframe
+  (`uplink_windows 20782` over ~20 782, read 2026-08-26), the nonce is
+  `(superframe, dev_id, direction, slot)` so three frames in one superframe are
+  three nonces, and `seal_claim` already admits them;
+- **one bit each way**, so the two ends can tell an event from a scheduled report.
+  `radio_pair_grant.flags` has no `RADIO_GRANT_FLAG_*` defined at all and
+  `radio_uplink_report_t.flags` has four spare bits, so it is a **bit definition
+  and not a layout change** — and it still binds the hub, so it is agreed there
+  first;
+- **a duty-cycle governor**, which neither firmware has
+  ([`radio/tdma.md`](../radio_devices_docs/radio/tdma.md)). An event path with no
+  ceiling is the one way this device can become an illegal transmitter, and the
+  burst argument above is only sound while something enforces the hour.
+
+**REQ-F-10 stays `not met` until the event path lands**, and the reason has
+changed: not that k = 3 has no writer — it has one, under a dev macro — but that
+nothing on this board can ever have anything urgent to say.
 
 **Nothing may quote three opportunities until this closes**, including
 `radio/tdma.md`'s deadline argument and REQ-F-10's stated state.
