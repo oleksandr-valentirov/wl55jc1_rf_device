@@ -153,13 +153,20 @@ cmake --build build/Dev
 ```
 
 **`-DWL55_ROLE=HUB` builds the hub role**, the same protocol above `phy.h` with
-this board's SX126x under it, and it takes the same toolchain argument:
+this board's SX126x under it, and it takes the same toolchain argument. **Pass
+`-DWL55_HUB_DEV_ID` or the image invites nobody**: the invitation is addressed,
+its default is `0x751C5A3B`, and a device id on this bench is a date rather than a
+fact — read `ident` off the board that is to be enrolled and put that here.
 
 ```bash
 cmake -S . -B build/HubRole -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWL55_ROLE=HUB \
-      -DCMAKE_TOOLCHAIN_FILE=$T
+      -DWL55_HUB_DEV_ID=0x22CDEC51u -DCMAKE_TOOLCHAIN_FILE=$T
 cmake --build build/HubRole
 ```
+
+Getting it wrong reads as a dead link from the fixture's side — `rx sync 0`,
+`frames 0`, `timeouts n` — and only the device says why, as
+`invites seen n  refused n` with `refused rc 3`. `ROADMAP.md` item 83.
 
 Its logic is `Core/Src/hublogic.c` and it is host-tested by `test_hublogic`, so
 a change to the enrolment scheduler is checked on a PC before it reaches a board.

@@ -66,6 +66,17 @@ none of them. The reasoning is on
 item leaves behind is the two window counters that make those rates readable, and
 they landed the same day.
 
+**The sixth pass, the same day, retired two more.** Item 61 — the WL55 hub role
+never got ADR-0026 — had been fixed since 2026-08-24 and stayed for one owed
+measurement: *re-measure the baseline before quoting 4 of 4 again*. Taken as
+`bench/runs/2026-08-26-1`, **nine of nine with every rung of both ladders equal**,
+and the reasoning is on
+[`radio/pairing.md`](../radio_devices_docs/radio/pairing.md) § the post-ADR-0026
+baseline. Item 82 — `TLM_TX_DENY` naming one gate whatever shut the other — was
+fixed in `feat(instruments)` the same day. **It was fixed without the queue being
+read first**, re-derived from a board instead of looked up, which cost nothing
+here and is the reason this file exists.
+
 **Status words**
 
 | | |
@@ -945,173 +956,6 @@ correctly.
 
 `radio_devices_docs/wl55_device/testing/bench-harness.md`.
 
-### 61. The WL55 hub role never got ADR-0026, and the fix is a host test — `blocking` `hub`
-
-Eleven exchanges on 2026-08-23, node B built `-DWL55_ROLE=HUB`, node A on
-`632b261`:
-
-```
-tx      invites 11 (err 0)  beacons 33
-rx      sync 11  crc err 0  frames 11
-req     seen 11  rsp sent 11
-conf    seen 0
-accept  sent 0  paired 0  timeouts 11
-```
-
-**Eleven of eleven, deterministic.** `sync == frames` exactly, so the hub heard the
-eleven requests and never a sync word for a confirmation.
-
-The cause is known and it is not a radio: `hublogic.c` arms
-`HUB_EX_TIMEOUT_US = 2 * SUPERFRAME_US` from the response and knows nothing of
-`RADIO_PAIR_CONF_REGION`. This is the hazard the aggregate roadmap's phase 8 named
-and mis-scoped — *with step 4 alone the device holds a confirmation the hub is no
-longer waiting for* — and step 3 landed on the H755's CM4 while step 4 landed
-here. **The WL55 hub role is a third image nobody counted.**
-
-**The cost reaches past this bench.** The WL55-to-WL55 control produced the **4 of
-4** baseline the pairing page quotes against the H755's 5 of 10, and that fixture
-cannot now complete a pairing at all. Every comparison against that baseline is
-suspended. It also removes the deterministic fixture: the H755 completes an
-enrolment about half the time, so a control that has to *fail* eleven times out of
-eleven to mean anything cannot be run against it.
-
-#### Re-scoped 2026-08-24: not a hand-port, a host test
-
-**This entry used to say build ADR-0026 into `hublogic.c`, and that is the wrong
-remedy for the right problem.** `hublogic.c` is a second copy of the hub's
-exchange logic, and it went stale in exactly the way ADR-0028 was written about:
-*a contract each side owns a copy of is a contract one side can revise alone.*
-Hand-porting the region model into it now buys a fixture that will go stale again
-at the next ADR reaching the wire, and adds a third implementation to keep in
-step until phase 9b subsumes it.
-
-**What to build instead is a host test for `hublogic.c` against a fake PHY.** It
-is the one piece of exchange logic in either tree that compiles for the host
-today — *the same protocol with no chip and no mailbox in it* — and the seam it
-reaches the radio through is the same eight calls
-`OpenHub/CM4/test/test_phy.c` already fakes on the other side. Making it
-ADR-0026-correct **under test** buys three things where the hand-port bought one:
-
-- the exchange scheduler becomes deterministic on a PC in seconds, where today
-  every one of its states is an air test;
-- the WL55 hub role comes back **as a by-product** of the same change, built for
-  the board rather than maintained for it;
-- it is phase 9a's third step
-  ([phy-seam.md](../radio_devices_docs/radio/phy-seam.md) § order of work) and the
-  bridge into 9b, so the work counts twice instead of being spent on a fixture.
-
-#### What the fixture is actually for, and what it is not
-
-Three values, and only the third is unique to it. **The second PHY as a control**
-is now partly delivered otherwise: the host suite separates logic from driver by
-removing the driver, which is stronger for a deterministic logic fault and cannot
-see anything that depends on time or air. **A deterministic fixture** — 11 of 11,
-4 of 4 — against the H755's coin flip is real and is worth having. And
-**localising K2 to the RFM69 side**: a WL55-to-WL55 link takes that part out of
-the question entirely, so pairing that works there and fails against the H755 puts
-the fault on the RFM69's side of the antenna. Nothing else on this bench does that.
-
-**It is not on the path to hub item 60.** The H755 already implements ADR-0026's
-region model — `ex_due_frame = ex_req_frame + 1`, `RADIO_EX_RSP_DUE`,
-`join_window_holds()`, and a `join_rx_deadline` set afresh per region — so its
-confirm leg is chased in its own source and its own counters. Item 60 carries that
-and does not wait on this.
-
-#### Built 2026-08-24, and the stated cause does not reproduce
-
-`test/test_hublogic.c`, 53 checks, `hublogic.c` driven through a fake PHY with a
-device on the other side that keeps ADR-0026's timing. **The exchange completes.**
-Request seen, response sent, confirmation heard, grant sent, paired, and no
-timeout - against a device that holds its confirmation to
-`RADIO_PAIR_CONF_REGION` past the invitation, which is the thing this entry said
-`hublogic.c` knows nothing about.
-
-**The negative is a real negative and not an untested path.** Mutating
-`HUB_EX_TIMEOUT_US` from two superframes to one turns the accept, the pairing and
-the held-time check red, so the suite does catch this class of defect. It is not
-present in this code: the deadline is armed from the *response*, and the response
-is only ~41 ms after the invitation, so two superframes from there still covers a
-confirmation due two superframes after the invitation.
-
-**Two numbers replace the argument, and the second is the binding one:**
-
-| | measured |
-|---|---|
-| deadline slack - how late the confirmation may be before the *timeout* refuses it | **41 040 us**, which is exactly this hub's invitation-to-response turnaround |
-| guard band - how late before the *window* has already closed under it | **106 660 us** past the region |
-
-The window is the constraint, not the timeout. A confirmation later than ~107 ms
-past its region point lands where the hub has put the part in standby, and is
-**never heard at all** - which is the only shape that reproduces this entry's
-bench signature: request seen, response sent, `conf seen 0`, timed out. Later
-still is heard again, in the next superframe's window, so *later* is not a
-diagnosis on its own; it is a band and not a cliff.
-
-**So the eleven-of-eleven is bounded rather than explained.** Either the device's
-confirmation was more than ~107 ms past its nominal region point, or it was never
-transmitted. That run recorded the hub's counters only; `stats.conf_sent` and
-`stats.invite_to_conf_us` on the node settle it in one reading, and until it is
-re-run this entry has a symptom and no cause.
-
-**A control that says why ADR-0026 exists, now reproducible in a second.**
-Pre-ADR-0026 timing - the confirmation 105 ms after the response - is *also* lost,
-in the dead zone before the next window opens. That is hub item 60's original
-mechanism, on a PC, without a board.
-
-**No change to `hublogic.c`.** Re-anchoring the deadline to the invitation would
-be principled and would buy nothing: the window closes first either way, and it
-would put an untested change on the path that is about to be re-measured.
-
-#### Closed 2026-08-24 on the bench: the hub was talking over it
-
-Run `2026-08-24-3`. **Both of the previous section's possibilities are wrong.**
-The device transmits the confirmation - `conf sent 38` against the hub's
-`conf seen 0` - and it is not late: `invite -> confirm` read 4 008 911, 4 008 923
-and 4 008 930 us against a 4 000 000 us schedule, **under 20 us of variation over
-twenty minutes**, and 8.9 ms inside a guard band the host test measured at
-106 660 us.
-
-**The third instrument found it.** `decode.py` over a 60 s bladeRF capture of the
-join channel decodes the invitation, the request, the response **and the
-`PAIR_CONF`** - so the confirmation was radiating the whole time. Beside each one,
-4.13-4.31 ms ahead of it, sits the hub's own `JOIN_BEACON`, whose air time is
-4.38 ms. The two transmissions overlap, and `phy_sx126x.c:30` holds the receiver
-off for the whole of a blocking send.
-
-**Even lands on even.** `hublogic.c` invites on `frame_counter % 8 == 0` and
-otherwise beacons on `% 2 == 0`; the device answers `RADIO_PAIR_CONF_REGION`
-(**2**) superframes later at the same phase, and `8k + 2` is even. That is why the
-failure was 11 of 11 and then 38 of 38 rather than a rate.
-
-**The clause was already implemented on the H755** - `pair_region_owned()` at
-`OpenHub/CM4/Core/Src/radio.c:1906` suppresses the beacon while the exchange owns
-the region. This role had no such guard. **The title was right and the cause was
-wrong**: the host test refuted the timeout anchor, and the bench found the missing
-ADR-0026 clause.
-
-`hublogic.c` now carries the same guard, bounded to `RADIO_PAIR_CONF_REGION`
-regions from the invitation. **One beacon in eight is deliberately not sent** -
-a real cost to a node still searching, which is why it is bounded rather than
-"silent while busy". First exchange after the reflash: `conf seen 1`,
-`accept sent 1`, `paired 1`, `level confirm -43 dBm` where it read `0`, and node A
-`paired yes hub 574C3535 net 0001 slot 0`.
-
-**The host test caught it before the board confirmed it**, once the fake stopped
-being generous in two ways this run exposed: `phy_transmit` left the hub
-listening through its own transmission, and nothing watched what the hub put into
-the region. `case_hub_is_silent_in_the_region_it_listens_in` was **red against the
-real defect and green after the fix** - a control nobody had to inject.
-
-**What is still owed:** the WL55-to-WL55 baseline the pairing page quotes was
-taken on a fixture that has now changed, so re-measure it before quoting 4 of 4
-again. Item 81 carries the anchor discrepancy this run found and did not settle.
-
-`radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md`,
-`bench/runs/2026-08-23-3/RESULTS.md`, `bench/runs/2026-08-24-3/RESULTS.md` — both
-records survive; **their captures were deleted 2026-08-26** and the finding does
-not depend on one, since it was the two consoles that disagreed. Related: item 80,
-the backend under this seam has no host test either.
-
 ### 58. A device with no console still cannot be released — `blocking`
 
 **Narrowed 2026-08-23.** The half that needed a debug probe is built:
@@ -1327,42 +1171,35 @@ against the capture.
 `radio_devices_docs/wl55_device/radio/pairing.md`,
 `bench/runs/2026-08-24-3/RESULTS.md`.
 
+### 83. The hub-role fixture invites a device id no board has held for days — `defect`
 
-### 82. `TLM_TX_DENY` names one gate whatever shut the other — `defect`
+`WL55_HUB_DEV_ID` is a CMake cache default, `0x751C5A3Bu`, and
+`CLAUDE.md`'s build recipe for `-DWL55_ROLE=HUB` does not mention it. Node A is
+`0x22CDEC51`, and a device id on this bench **is a date rather than a fact** — an
+erase draws a new one. So the documented recipe builds a fixture that invites
+nobody.
 
-The record that repeats every cycle is emitted with a **hard-coded**
-`TLM_WHY_FLOOR`:
+**It cost the first series of `bench/runs/2026-08-26-1`** and the shape is why it
+is filed rather than just fixed in a shell. From the fixture's own console the
+failure is `rx sync 0`, `crc err 0`, `frames 0`, `timeouts 11` — **a clean total
+zero, which is what a dead link looks like**. Nothing on that side can tell a
+stale target from a radio that is not being heard. What separated them in one read
+was the device's `invites seen 10  refused 10` with `req sent 0  refused rc 3`,
+`rc 3` being `PAIR_INIT_NOT_ADDRESSED`: a counter with both halves and a reason.
 
-```c
-if (!may_send) {
-    tlm_emit(TLM_TX_DENY, sf, TLM_WHY_FLOOR, 0u, 0u);
-```
+Two things are owed and neither is the constant itself.
 
-`tx_allowed()` has two gates - `tx_floor_known`, and the floor comparison itself -
-and `TLM_TX_HOLD` distinguishes them correctly, `tx_floor_known ? TLM_WHY_FLOOR :
-TLM_WHY_NODOWNLINK`. But `TX_HOLD` fires **once**, behind `tx_hold_said`, so it is
-gone by the time anyone attaches to the VCP, while `TX_DENY` repeats forever with
-a constant in the reason column.
+- **The recipe has to carry the argument.** `CLAUDE.md` documents
+  `-DWL55_ROLE=HUB` and `-DWL55_HUB_DEV_ID` is the one flag that decides whether
+  the image does anything at all. Fixed the same day; the item stays for the
+  second half.
+- **A default that names an identity should say it is unset rather than guess
+  one.** The invitation could carry a broadcast target, or the build could refuse
+  when the id is left at its default, or the fixture could print the id it is
+  inviting on every `hub`. The last is the cheapest and is the shape the
+  `verification` skill prescribes — *where a default substitutes for a bad input,
+  the instrument must say which one it used*. **None of the three is chosen here**;
+  `hub` currently prints eight rows and not the one that decides the run.
 
-**Cost, 2026-08-25.** A board that had opened no downlink since boot - so
-`tx_floor_known` was 0 and the reason was `NODOWNLINK` - emitted `tx.deny why=8`
-after every beacon it heard. `8` is `TLM_WHY_FLOOR`. Read at face value it says a
-floor exists and the superframe has not passed it, which is the opposite of the
-truth and points a reader at the hub's downlink content rather than at its
-absence. The console said the right thing in the same minute - `tx floor none yet
-- no downlink opened since boot` - so the two instruments disagreed and only the
-one nobody was watching was correct.
-
-**It is the `verification` skill's category in its cheapest form**: not a wrong
-number but a *category* in a reason column, where every value is a small integer
-and nothing distinguishes a constant from a reading. The fix is one expression,
-already written correctly eight lines above.
-
-`Core/Src/device.c` -> the `may_send` block; `radio_devices_docs/wl55_device/`.
-
-Related and **already fixed** in the same session: `dl_repeats` and `dl_replays`
-were incremented and read nowhere - not on the console, not in the snapshot - so a
-node refusing every downlink was indistinguishable from a hub sending none. They
-now print with the durable floor beside them as
-`dl <n> repeat, <n> replay, floor <n>`, which is what separated the two candidate
-causes of hub item 98 in one read.
+`Core/Src/hublogic.c` -> `WL55_HUB_DEV_ID`, `CMakeLists.txt:65`.
+`radio_devices_docs/radio/pairing.md` § the post-ADR-0026 baseline.
