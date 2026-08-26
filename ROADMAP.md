@@ -21,9 +21,10 @@ items below are the exception and are hints rather than identifiers.
 
 **A figure from a run before `2026-08-25-2` is a record, not a rate.** Every
 dataset up to and including `2026-08-25-1` was deleted on 2026-08-26 and only the
-runs' records survive (`../bench/runs/README.md`). Items 61, 77, 78 and 81 carry
-the marking at their own sites, and **item 78 is where it costs something**: the
-channel split that is this queue's sharpest lead can be read and not re-derived.
+runs' records survive (`../bench/runs/README.md`). Items 61, 77 and 81 carry the
+marking at their own sites. **In the end it cost this queue nothing**: the entry
+that leaned hardest on a retired capture was item 78, and what retired item 78 was
+a live window on two boards, taken with no receiver on the bench at all.
 
 **Cleaned four times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
@@ -50,6 +51,20 @@ library the only one, reasoning on `radio/hopping.md`; and item 82, `exchange.h`
 reaching an implementation, reasoning on `radio/phy-seam.md` § the crypto seam.
 **An item that records its own closure is a queue entry that will be re-read as
 open**, because the tag is the last thing scanned and the title is the first.
+
+**The fifth pass retired item 78, and it was refuted rather than finished.** *The
+device hears almost nothing the hub sends* rested on three rows and every one was
+this node's own listening cadence: `report_service` opens a receiver on one
+superframe in `report_every` and nothing else opens one at all, so `24.9 %` of the
+hub's downlinks is `RADIO_DOWNLINK_EVERY / report_every`, `~1 in 8` beacons on the
+grid is that number again, and `sync.lost since=4000027` is `SUPERFRAME_FRESH_US`
+against a 16 s cadence. Measured 2026-08-26 on two live boards: **2580 downlinks
+opened against 6 missed beacons over ~20 782 superframes, 99.4-99.8 % on the
+grid**, with node A hearing every beacon and every downlink and being addressed by
+none of them. The reasoning is on
+[`radio/beacon.md`](../radio_devices_docs/wl55_device/radio/beacon.md); what the
+item leaves behind is the two window counters that make those rates readable, and
+they landed the same day.
 
 **Status words**
 
@@ -1137,7 +1152,7 @@ have to again.
 
 **What is still owed is the autonomous grant, and it is a design question**: a hub
 grant in the downlink — what the field name and `arm_opp`'s `0xFF` imply, and what
-item 78 says cannot be delivered today — a local policy on a missed
+the downlink was thought too lossy to carry until 2026-08-26 — a local policy on a missed
 acknowledgement, or a compile-time default. The duty cycle constrains the answer
 rather than settling it: k = 3 is 1.200 % *every superframe* and 0.150 % at
 `report every 8`, so the grant must carry the cadence with it.
@@ -1147,108 +1162,6 @@ console command is not a mechanism a requirement can rest on.
 
 **Nothing may quote three opportunities until this closes**, including
 `radio/tdma.md`'s deadline argument and REQ-F-10's stated state.
-
-### 78. The device hears almost nothing the hub sends — `defect` `blocking`
-
-Regression run `2026-08-24-1`, checks RG-A-1 and RG-A-3, and it is the first
-window that held both instruments at once.
-
-**Every dataset this entry rests on was deleted on 2026-08-26**, along with
-everything before `2026-08-25-2` (`../bench/runs/README.md`). The entry is not
-withdrawn — it is **unsourced on its air-side rows** and has to be said in three
-parts, because the three do not lose the same amount:
-
-| what | still stands? |
-|---|---|
-| the counter-derived rate — **24.9 %**, hub `downlink 6978 sent` against node A `1738 opened` | **yes.** Both numbers were read off consoles and are in `../bench/runs/2026-08-25-1/RESULT.md`, which survives; no capture was involved |
-| the band exoneration — 0 of 29 grid channels clear the gate | **yes**, and it rests on `2026-08-25-2`, whose samples are still on disk |
-| **the channel split** — `PAIR_RSP`/`PAIR_ACCEPT` 7 of 7 on the fixed join channel against ~1 in 8 on the grid | **no.** Run `2026-08-24-4` is a record only, so the sharpest lead in this entry can be read and not re-derived |
-| the beacon row — 31 beacons on air, node A dropping sync every two superframes | **no**, same reason: run `2026-08-24-1`'s capture is gone |
-
-**The cheap arm named at the end of this entry is now the way back in**, not an
-optional confirmation: park a device on the join channel and compare beacon
-reception there against the grid, in a window graded against `2026-08-25-2` or
-later.
-
-| the air, over 31 superframes | this device |
-|---|---|
-| **31 beacons, one per superframe**, each on a grid channel | node A: `sync.lost since=4000027` repeatedly, `since beacon` 5.8–12.9 s |
-| ~~**15 downlinks**~~ | ~~node A: **`downlinks 0 of 5`**~~ — **withdrawn, see below** |
-| join-channel bursts on channel 14 | node B: **0 invitations across 68 listening slices**, `sync=0` for a whole 10-minute window |
-
-**The middle row said the opposite of what it was read as, and regression
-`2026-08-25-1` withdrew it.** `downlinks A of B` is `dl_applied` of `dl_opened`:
-`dl_opened` counts every downlink that passed its tag and its replay floor, and
-`dl_applied` only those carrying a **new command** — a keepalive returns before
-the increment. So `0 of 5` reads *five downlinks arrived and none carried a
-command*, and the hub agrees from the other side of the antenna with
-`cmds 0 sent, 0 acked, 0 lost`. It was never evidence that the device heard
-nothing; it is evidence that it heard five.
-
-**This entry's conclusion is unchanged.** The other two rows are independent, and
-the channel split below is stronger than any of them. What changes is that one of
-the three witnesses was miscounted, and the console's heading is what misread —
-both counters are incremented correctly, on the right paths.
-
-**And the same question now has a far better answer.** In that run's window the
-hub reported `downlink 6978 sent` while node A reported **1738 opened**, both
-counters read within the hour over the same ~28 000 s: **24.9 % of hub→device
-frames on the grid**, on a population four times the 31 superframes above.
-`../bench/runs/2026-08-25-1/RESULT.md`.
-
-The hub's transmitter is not the suspect: the capture holds its frames. The band
-is not the suspect either — **0 of 29 grid channels stand clear of the capture's
-own band reference**, on two captures of 2026-08-25 twelve hours apart, with one
-emitter outside the grid at 868.000 MHz in both.
-
-**That conclusion is unchanged and the reason under it is new, which is why the
-old numbers are gone from this entry.** It used to read *all 29 grid channels at
-1.17–1.49 % with nothing foreign on any of them* — and under the criterion the
-tool then stated, `--busy 1.0`, 1.17 % **is** busy, so the stated rule should have
-condemned all 29 and this page concluded the opposite. The exoneration was read
-off the numbers by eye. It is now produced by the criterion, so it can be
-re-derived from this line: `radio_devices_docs/specs/06-regression.md` RG-A-9,
-`bench/runs/2026-08-25-*/bandscan.REANALYSED.txt`.
-
-**Losing sync costs the period estimate, which costs the next beacon.**
-`SUPERFRAME_FRESH_US` is `2 * SUPERFRAME_US`, so two missed beacons drop sync;
-`superframe_align_at()` then clears `measured_us` after `SUPERFRAME_RESYNC_AFTER`
-refusals and re-enters the two-beacon bootstrap. Node A reported
-`per=2006987 us` against a nominal 2 000 000 — **6987 µs per superframe against a
-1400 µs guard**. The estimator itself is sound: `test_period` holds ±18 µs over
-401 estimates and its own two-beacon control sits at +563 µs. It is being starved,
-never reaching the 64-superframe baseline.
-
-So this is a loop rather than a defect in one place, and the entry point is not
-yet known. What separates *the logic is wrong* from *this driver is wrong* is a
-second PHY running the identical logic, which is exactly what
-[ADR-0028](../radio_devices_docs/radio/decisions/0028-the-radio-is-a-library-and-the-region-is-a-compile-time-profile.md)
-§9a sequences early and what `-DWL55_ROLE=HUB` already half-provides.
-
-**The loss splits by channel, measured 2026-08-24 in run `2026-08-24-4`.** The
-same two boards, minutes apart, in one window:
-
-| hub -> device | channel | delivered |
-|---|---|---|
-| `PAIR_RSP`, `PAIR_ACCEPT` | 866.5 MHz, **fixed** | **7 of 7** |
-| join and data beacons | the 29-channel **hopping grid** | ~1 in 8 |
-
-Both nodes read `clock ... stale` with **15.6 s since the last beacon** against a
-2 s superframe, while paired and delivering - and in the same run not one
-hub->device enrolment frame was lost. **The downlink is not broken in general; it
-is broken on the grid**, which points at the hop sequence or the retune rather
-than at the transmitter or this receiver's sensitivity, and neither was a suspect
-before.
-
-It is an inference across two frame classes that differ in length and timing as
-well as in channel, so it is a hypothesis with evidence rather than a settled
-fact. **The arm that settles it is cheap**: hold a device on the join channel and
-compare beacon reception there against the grid.
-
-**And the period estimate does not order by level.** Node A is 11 dB stronger at
-the hub and reads `period 2 007 280 us` - 3 640 ppm, the same figure this entry
-already records - while node B reads `2 000 943 us`, 470 ppm. The weaker board has
-the better estimate, which the starvation loop above does not predict.
 
 ### 79. `linkjoin.py`'s `hub - nominal` column compares two different origins — `defect`
 
