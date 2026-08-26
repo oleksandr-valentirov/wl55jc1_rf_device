@@ -91,15 +91,18 @@ static void show_state(void) {
             (unsigned long)v.tx_floor);
     else
         out("tx floor  none yet - no downlink opened since boot\r\n");
-    /* Opened is the denominator; applied counts only the ones that named a command. */
-    out("counts  reports %lu  missed %lu  downlinks %lu of %lu  recoveries %lu\r\n",
-        (unsigned long)v.reports_sent, (unsigned long)v.beacons_missed,
-        (unsigned long)v.downlinks_applied, (unsigned long)v.downlinks_opened,
-        (unsigned long)v.recover_entered);
+    out("counts  reports %lu  recoveries %lu\r\n",
+        (unsigned long)v.reports_sent, (unsigned long)v.recover_entered);
+    /* Every number names the population it is counted over. ROADMAP item 78
+     * radio_devices_docs/wl55_device/radio/beacon.md */
+    out("beacon  %lu missed of %lu windows\r\n",
+        (unsigned long)v.beacons_missed, (unsigned long)v.beacon_windows);
     /* Refused ones move neither number above, so silence there had two causes. */
-    out("dl      %lu repeat, %lu replay, floor %lu\r\n",
-        (unsigned long)v.downlinks_repeat, (unsigned long)v.downlinks_replay,
-        (unsigned long)v.downlink_floor);
+    out("dl      %lu opened of %lu windows, %lu applied, %lu repeat, %lu replay\r\n",
+        (unsigned long)v.downlinks_opened, (unsigned long)v.downlink_windows,
+        (unsigned long)v.downlinks_applied, (unsigned long)v.downlinks_repeat,
+        (unsigned long)v.downlinks_replay);
+    out("dl      floor %lu\r\n", (unsigned long)v.downlink_floor);
     {
         /* The same numbers the report carries, before the air can be blamed. */
         sensor_reading_t m;

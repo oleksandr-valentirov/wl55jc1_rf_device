@@ -56,7 +56,9 @@ typedef struct device_view {
     uint32_t invites_refused;
     uint32_t reports_sent;
     uint32_t beacons_missed;
+    uint32_t beacon_windows;    /**< beacon receives the report loop opened, the miss denominator */
     uint32_t downlinks_applied;
+    uint32_t downlink_windows;  /**< downlink receives opened, the opened denominator */
     uint32_t downlinks_opened;  /**< every one that passed its tag, keepalives included */
     uint32_t downlinks_repeat;  /**< carried the command already held, so nothing was applied */
     uint32_t downlinks_replay;  /**< authenticated, and not newer than the durable floor */

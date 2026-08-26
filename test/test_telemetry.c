@@ -105,6 +105,11 @@ static void test_format(void) {
     tlm_emit(TLM_TX_DENY, 610672u, TLM_WHY_OFFBEAT, 0u, 0u);
     eqline("!14 1512 tx.deny sf=610672 why=7\r\n");
 
+    /* rc names the refusal; 0 is an empty window and not a refusal code. */
+    host_clock_advance(1u);
+    tlm_emit(TLM_RX_DL_MISS, 262440u, 33000u, 27u, 2u);
+    eqline("!15 1513 rx.dlmiss sf=262440 win=33000 grid=27 rc=2\r\n");
+
     CHECK(tlm_next(NULL, 0) == 0, "a drained ring still produced a line");
 }
 

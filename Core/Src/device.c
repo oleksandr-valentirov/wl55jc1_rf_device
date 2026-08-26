@@ -389,6 +389,9 @@ static uint8_t  arm_opp, arm_every;
 static uint8_t  report_band;
 static uint32_t report_attempt_sf;
 static uint32_t reports_sent, beacons_missed;
+/* The populations both receive counters are fractions of.
+ * radio_devices_docs/wl55_device/radio/beacon.md */
+static uint32_t beacon_windows, dl_windows;
 static uint32_t invite_slices, invites_refused;
 
 /* Coming back after the counter is gone.
@@ -615,6 +618,7 @@ void report_service(void) {
     /* Re-align first; the beacon says the free run was good enough. */
     while (!timebase_elapsed(boundary - DOWNLINK_RX_LEAD_US - uncert)) { }
     info.timeout_us = REPORT_BEACON_WINDOW_US + 2u * uncert;
+    beacon_windows++;
     if (radio_receive(rx, sizeof(rx), &info) != 0 ||
         beacon_apply(rx, info.len, &sframe, &quiesce, info.start_us, &aligned) != BEACON_OK) {
         /* A counted miss with no record is a rate nobody can date. */
@@ -663,9 +667,20 @@ void report_service(void) {
             while (!timebase_elapsed(open_at)) { }
             di.timeout_us = RADIO_DOWNLINK_RX_CLOSE_US - RADIO_DOWNLINK_RX_OPEN_US
                             + DOWNLINK_RX_LEAD_US;
-            if (radio_receive(dl, sizeof(dl), &di) == 0 &&
-                downlink_open(dl, di.len, &cmd) == 0)
-                downlink_apply(sf, &cmd);
+            dl_windows++;
+            /* An empty window and a refused frame were one silence.
+             * radio_devices_docs/wl55_device/radio/beacon.md */
+            if (radio_receive(dl, sizeof(dl), &di) != 0) {
+                tlm_emit(TLM_RX_DL_MISS, sf, di.timeout_us, grid, 0u);
+            } else {
+                int rc = downlink_open(dl, di.len, &cmd);
+
+                if (rc == 0)
+                    downlink_apply(sf, &cmd);
+                else
+                    tlm_emit(TLM_RX_DL_MISS, sf, di.timeout_us, grid,
+                             (uint32_t)(-rc));
+            }
         }
     }
 
@@ -699,7 +714,9 @@ void report_service(void) {
     if (may_send)
         tx_hold_said = 0;
     if (!may_send) {
-        tlm_emit(TLM_TX_DENY, sf, TLM_WHY_FLOOR, 0u, 0u);
+        /* The two gates tx.hold already tells apart; one name for both hid a node. */
+        tlm_emit(TLM_TX_DENY, sf,
+                 tx_floor_known ? TLM_WHY_FLOOR : TLM_WHY_NODOWNLINK, 0u, 0u);
         tx_self_silenced = 1;
     }
     if (tx_self_silenced)
@@ -997,6 +1014,8 @@ void device_snapshot(device_view_t *v) {
     v->invites_refused = invites_refused;
     v->reports_sent    = reports_sent;
     v->beacons_missed  = beacons_missed;
+    v->beacon_windows  = beacon_windows;
+    v->downlink_windows = dl_windows;
     v->downlinks_applied = dl_applied;
     v->downlinks_opened  = dl_opened;
     v->downlinks_repeat  = dl_repeats;

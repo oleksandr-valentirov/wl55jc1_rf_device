@@ -46,6 +46,8 @@ static const tlm_kind_info_t kinds[TLM_KIND_COUNT] = {
     [TLM_JOIN_OK]   = { "join.ok", { "slot","every", "sf"            }, 0u },
     /* The reservation, not a fault: sealing waits, syncing does not. */
     [TLM_TX_HOLD]   = { "tx.hold", { "sf",  "why",   "floor"         }, 0u },
+    /* The downlink window's own record: opened and empty said nothing before. */
+    [TLM_RX_DL_MISS] = { "rx.dlmiss", { "sf", "win",  "grid", "rc"     }, 0u },
 };
 
 static tlm_rec_t ring[TLM_RING];

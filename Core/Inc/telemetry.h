@@ -30,6 +30,7 @@ typedef enum {
     TLM_JOIN_TRY,
     TLM_JOIN_OK,
     TLM_TX_HOLD,
+    TLM_RX_DL_MISS,
     TLM_KIND_COUNT
 } tlm_kind_t;
 
@@ -45,6 +46,8 @@ typedef enum {
 #define TLM_WHY_NODOWNLINK 9u  /* no downlink has opened since this boot */
 
 /* rx.cmd `rpt`: 0 applied, 1 a repeat of the one held, 2 a keepalive, 3 a replay. */
+
+/* rx.dlmiss `rc`: 0 the window closed empty, else downlink_open's refusal negated. */
 
 /** @brief Rings a record: a timestamp, a sequence number and four words. */
 void tlm_emit(tlm_kind_t kind, uint32_t a, uint32_t b, uint32_t c, uint32_t d);
