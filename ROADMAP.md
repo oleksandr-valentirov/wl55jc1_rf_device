@@ -152,27 +152,37 @@ count is `(R - 2*667ms) / w + 1`.
 `radio_slots.h:175` asserts `EVENT_GAP + latch + air < 1000000`, which holds at
 789250 us.
 
-**Part of the floor is the hub's front end, measured, and it is not enough.**
-Confirmed with a control that closed: dropping the hub's LNA from AGC to G6 lifts
-per-frame delivery 23 % → 34 %, which is 54 % → 71 % for at least one of three
-opportunities. **The requirement needs 78 % per frame for 99 % in one
-superframe.** A real gain, a third of the way, and this item stays blocking. The
-arms, the withdrawn PA exoneration and the three AGC registers still to look at
-are on `radio_devices_docs/open_hub/radio/configuration.md` § the gain step
-confirmed.
+**Re-derived 2026-08-26: the link half of this item is closed, and every figure it
+used to rest on was a measurement of one register.** Three paragraphs stood here —
+a front end whose LNA step lifted delivery 23 % → 34 %, a *slot-independent floor
+of roughly 59 % loss* at ~41/24/14 % per slot, and *the arithmetic closes and the
+link does not* at 20 % accepted, 39/15/6 % per opportunity. **All three are dated
+before 2026-08-25**, which is
+[ADR-0033](../radio_devices_docs/open_hub/decisions/0033-the-hub-does-not-run-afc.md):
+the hub was subtracting a noise-derived AFC correction from `FRF` on every window
+and frames died before sync. They are kept nowhere as live numbers, and they are
+named here only so a reader who meets one elsewhere can date it.
 
-**A floor of roughly 59 % loss is slot-independent and is not timing.** Per-slot
-delivery measured by the hub on 2026-08-22 against 8124 frames sent per slot:
-~41 / 24 / 14 %. Item 41's variance explains the *gradient* between those and
-nothing about why slot 1, with 13 µs of scatter against a 1400 µs guard and 56 dB
-of margin, loses three frames in five. Whatever that is, it is this item's.
+With the register off, and both denominators taken on the far side of the antenna:
 
-**The arithmetic closes and the link does not.** The agreed-window measurement is
-**23 % detected, 20 % accepted** at -17 dBm, per slot 39/15/6 %. At a 20 % first-
-try acceptance rate the deadline is not met in practice whatever the geometry
-allows, and three opportunities at 20 % is not three chances at the deadline —
-it is 49 % of one. The hub's `radio/tdma.md` now states this plainly rather than
-quoting the old 876-of-876 at -24 dBm.
+| | population | |
+|---|---|---|
+| **k = 3, all three opportunities** | node A, dev image, 2026-08-25 | **171 sent, 171 accepted**, and **57 of 57** on each of opportunities 0, 65 and 130 |
+| **k = 1, sustained** | live, 2026-08-26, ~21 968 superframes | hub `uplink_frames 2731`, `uplink_ok 2731`, `uplink_sync 2731`, and `bad_tag` `bad_slot` `bad_frame` `replay` **all 0** |
+| the same window, from this side | node B's own console | `reports 2661` against the hub's `frames_ok 2659` for it, read within a minute |
+
+**39/15/6 % became 57/57/57 of 57**, and there is no floor left to explain. The
+device's own `reports` is the transmit count the hub cannot see, so the second row
+is an acceptance rate and the third is the delivery rate — the two halves this
+item spent a week combining across different windows.
+
+**What that leaves, and it is why the item is still `blocking`.** The k = 3 arm's
+population is 57 per opportunity and one board; the live 100 % is **k = 1**,
+because both nodes run `opps 1 of 3  k=0`. So the geometry is measured at k = 3
+once and running at k = 1 always, and what closes the gap is not another
+measurement — it is item 77, which is that **nothing on this board can fire the
+three opportunities**, and item 22, which is that a sustained k = 3 is over the
+band's duty cycle whatever the link does.
 
 **Item 21 does not block measuring it, and the claim that it did was wrong in
 both directions.** A k=3 PER run is this device transmitting three uplinks and
@@ -198,10 +208,11 @@ assert pins the design constant rather than what either firmware can reach. The
 transmit half is fixed; **the header wants a comment naming what the guarantee
 depends on**, agreed with the hub session and pending its next change.
 
-The event itself needs no wire change: `report_every` is device-side policy, the
-slot is already in the nonce, and `RADIO_SLOT_TO_DEVICE(n) = n % 65` maps slots
-66 and 131 back to this device. It costs one bit of `flags`, of which seven are
-free.
+The event's own wire is **item 77's**, and the count that used to sit here was
+wrong: `radio_protocol.h` defines four report flags, so **four** are free and not
+seven. What is true and belongs here is that the *geometry* needs no wire change —
+the slot is already in the nonce and `RADIO_SLOT_TO_DEVICE(n) = n % 65` maps slots
+66 and 131 back to this device.
 
 Two device-side consequences whichever option wins: `t_latch` is 3.25 ms awake
 and on channel (2882 ramp + 268 SetTx + 82 seal) and **unmeasured from sleep**,
@@ -1150,18 +1161,19 @@ one that writes.
 because run `2026-08-24-1` had to infer `k` from a duty cycle, and no run should
 have to again.
 
-**The autonomous grant this entry used to ask for is not owed, and the arithmetic
-says why.** Settled 2026-08-26 on
-[`radio/tdma.md`](../radio_devices_docs/radio/tdma.md) § *no sustained
-configuration meets the deadline inside the duty budget*: at `report_every` 1,
-k = 3 closes the deadline at a 778 ms gap and costs **12 000 ppm** against the
-**10 000** of `h1.4`; k = 2 is legal and cannot reach 1000 ms at any stride; every
-sparser cadence puts the gap at `2000 N - 1222` ms, 14.8 s at the default 8.
-**Every sustained setting is on one side or the other**, so a mechanism granting
-one — by downlink, by local policy or by a compile-time default — would grant
-either an illegal transmitter or a configuration that misses the requirement it
-exists for. Closing that would need a **17 % shorter frame or a 20 % faster bit
-rate**, both contract changes to be re-measured on air.
+**Three entries touch REQ-F-10 and this is the boundary between them.** Item 4
+owns the deadline budget and whether the link delivers; item 22 owns the duty
+cycle a sustained k = 3 exceeds; **this item owns the mechanism, and there is
+none.** Nothing here restates either of the other two.
+
+**The autonomous grant this entry used to ask for is not owed at all.** Settled
+2026-08-26 on [`radio/tdma.md`](../radio_devices_docs/radio/tdma.md) § *no
+sustained configuration meets the deadline inside the duty budget*, which is where
+the arithmetic lives: **every** sustained setting is either over the band's
+ceiling or short of the 1 s deadline, so a mechanism granting one — by downlink,
+by local policy or by a compile-time default — would grant an illegal transmitter
+or a configuration that misses the requirement it exists for. That page also
+carries what closing it would cost in the frame or the bit rate.
 
 **What is legal is the burst**, and the regulation says so from its own side:
 `Tobs` is an hour and the quantity is cumulative ON time
@@ -1188,10 +1200,11 @@ a contract change:
   `radio_uplink_report_t.flags` has four spare bits, so it is a **bit definition
   and not a layout change** — and it still binds the hub, so it is agreed there
   first;
-- **a duty-cycle governor**, which neither firmware has
-  ([`radio/tdma.md`](../radio_devices_docs/radio/tdma.md)). An event path with no
-  ceiling is the one way this device can become an illegal transmitter, and the
-  burst argument above is only sound while something enforces the hour.
+- **a duty-cycle governor**, which is **items 22 and 25** here and item 10 on the
+  hub, and which neither firmware has built. It is not a fourth thing to queue —
+  item 25 already states the right shape, *a budget over the hour and in bytes,
+  not an integer per superframe* — but the burst argument above is only sound
+  while something enforces that hour, so this item cannot land before it does.
 
 **REQ-F-10 stays `not met` until the event path lands**, and the reason has
 changed: not that k = 3 has no writer — it has one, under a dev macro — but that
