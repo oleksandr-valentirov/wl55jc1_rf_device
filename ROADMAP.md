@@ -19,6 +19,12 @@ sentence, so nothing anywhere disagrees when it goes stale. Name the file, the
 symbol, the commit or the ADR instead; those fail loudly when they move. The `hub`
 items below are the exception and are hints rather than identifiers.
 
+**A figure from a run before `2026-08-25-2` is a record, not a rate.** Every
+dataset up to and including `2026-08-25-1` was deleted on 2026-08-26 and only the
+runs' records survive (`../bench/runs/README.md`). Items 61, 77, 78 and 81 carry
+the marking at their own sites, and **item 78 is where it costs something**: the
+channel split that is this queue's sharpest lead can be read and not re-derived.
+
 **Cleaned four times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
@@ -1040,8 +1046,10 @@ taken on a fixture that has now changed, so re-measure it before quoting 4 of 4
 again. Item 81 carries the anchor discrepancy this run found and did not settle.
 
 `radio_devices_docs/radio/decisions/0026-one-turn-per-join-region.md`,
-`bench/runs/2026-08-23-3/RESULTS.md`, `bench/runs/2026-08-24-3/RESULTS.md`. Related: item 80, the backend under this
-seam has no host test either.
+`bench/runs/2026-08-23-3/RESULTS.md`, `bench/runs/2026-08-24-3/RESULTS.md` — both
+records survive; **their captures were deleted 2026-08-26** and the finding does
+not depend on one, since it was the two consoles that disagreed. Related: item 80,
+the backend under this seam has no host test either.
 
 ### 58. A device with no console still cannot be released — `blocking`
 
@@ -1100,7 +1108,11 @@ That splits this into two facts that are easy to conflate:
 - **Today it cannot be reached at all**, so even the instrument is gone, and every
   delivery figure measured since `08e244e` is a **single-opportunity** figure.
 
-**Two instruments say so and they were not asked to agree.** Regression run
+**Two instruments say so and they were not asked to agree** — and **both readings
+are records now, not measurements**: run `2026-08-24-1`'s capture was deleted on
+2026-08-26 with every dataset before `2026-08-25-2`
+(`../bench/runs/README.md`). What they established still stands, because the
+source half of it is read off this tree and not off the air. Regression run
 `2026-08-24-1`, check RG-A-5: measured duty cycle **0.043 %**, against 0.050 %
 predicted for k=1 and 0.150 % for k=3 at `report every 8`. `airgrid`'s C3 reports
 `[3, 0, 0]` on the same window — its `[3, 1, 0]` counts the 868.000 MHz neighbour
@@ -1140,6 +1152,23 @@ console command is not a mechanism a requirement can rest on.
 
 Regression run `2026-08-24-1`, checks RG-A-1 and RG-A-3, and it is the first
 window that held both instruments at once.
+
+**Every dataset this entry rests on was deleted on 2026-08-26**, along with
+everything before `2026-08-25-2` (`../bench/runs/README.md`). The entry is not
+withdrawn — it is **unsourced on its air-side rows** and has to be said in three
+parts, because the three do not lose the same amount:
+
+| what | still stands? |
+|---|---|
+| the counter-derived rate — **24.9 %**, hub `downlink 6978 sent` against node A `1738 opened` | **yes.** Both numbers were read off consoles and are in `../bench/runs/2026-08-25-1/RESULT.md`, which survives; no capture was involved |
+| the band exoneration — 0 of 29 grid channels clear the gate | **yes**, and it rests on `2026-08-25-2`, whose samples are still on disk |
+| **the channel split** — `PAIR_RSP`/`PAIR_ACCEPT` 7 of 7 on the fixed join channel against ~1 in 8 on the grid | **no.** Run `2026-08-24-4` is a record only, so the sharpest lead in this entry can be read and not re-derived |
+| the beacon row — 31 beacons on air, node A dropping sync every two superframes | **no**, same reason: run `2026-08-24-1`'s capture is gone |
+
+**The cheap arm named at the end of this entry is now the way back in**, not an
+optional confirmation: park a device on the join channel and compare beacon
+reception there against the grid, in a window graded against `2026-08-25-2` or
+later.
 
 | the air, over 31 superframes | this device |
 |---|---|
@@ -1274,7 +1303,10 @@ checked on a PC and the other is checked by reading it.
 `join.c:292` takes `t_beacon = micros()` **after** `receive_until` returns, which
 reads as the moment the invitation finished arriving. Two independent
 measurements in run `2026-08-24-3` put it within a millisecond of the
-invitation's **start**, about one whole invitation air time earlier:
+invitation's **start**, about one whole invitation air time earlier. **One of the
+two was the air, and that capture was deleted on 2026-08-26**
+(`../bench/runs/README.md`), so the table below is down to one live instrument and
+its record; re-taking it needs a window against `2026-08-25-2` or later:
 
 | | end-anchor predicts | start-anchor predicts | measured on air |
 |---|---|---|---|
