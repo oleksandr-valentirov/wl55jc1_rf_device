@@ -111,9 +111,43 @@ from a console any more, and ten enrolments completed with nothing typed on it.
 
 Three things this entry still owns:
 
-- **No reset has been run through the machine.** Every trial so far erased the
-  store first, which exercises the draw path and never the restore path. That is
-  item 5's sequence and this item's evidence.
+- **The restore path has now run, unattended, and this bullet is half discharged.**
+  It used to read *no reset has been run through the machine* — every trial erased
+  the store first, exercising the draw path and never the restore path. On
+  2026-08-26 node A was reflashed **without erasing the store**, and came back
+  `ident stored dev 22CDEC51 gen 35`, `paired yes hub 33442211 net 0001 slot 0
+  every 8`. Nothing was typed at it. Its own record stream, microseconds since
+  boot:
+
+      30.09 s  rec.enter  sf=15      tier=2      no measured period to extrapolate
+      30.09 s  rec.park   grid=16    866.7 MHz
+      42.48 s  rec.hit    sf=262665  rssi=-40
+      42.48 s  sync.jump  was=22     d=262643    the free run adopts the hub's counter
+      50.14 s  rec.park   grid=22    867.3 MHz   four predicted windows missed, re-park
+      82.63 s  rec.hit    sf=262685  rssi=-41
+      82.63 s  sync.ok    per=2007626
+      82.64 s  rec.exit   per=2007626
+
+  **82.6 s from reset to a measured period**, with the first beacon at 42.5 s.
+  The shape is the one [timebase.md](../radio_devices_docs/wl55_device/radio/timebase.md)
+  predicts and it had never been watched end to end: **the first beacon aligns the
+  counter and leaves the stub period**, so `superframe_can_schedule()` is still
+  false and recovery continues; the **second** one, 40 s later and on a different
+  parked channel, is what measures the period and ends it. The `d=262643` jump is
+  accepted because a device that has never been aligned skips the plausibility
+  test — [beacon.md](../radio_devices_docs/wl55_device/radio/beacon.md) — and
+  `SUPERFRAME_MAX_JUMP` would otherwise have refused it by four orders.
+
+  **Two limits, because this is not yet item 5's sequence.** It was a **software**
+  reset from the debug probe, not a power cycle — `RCC->CSR` read `1C010600`
+  against `0C010600` before, so no BOR or POR path was exercised. And **the hub did
+  not reset**, which is the half item 5 owns. What is discharged is *the restore
+  path has never run*; what is not is *both ends restart and the link comes back*.
+
+  **And the cost the third bullet names is now measured rather than reasoned**:
+  `rec.enter` fired at **30.09 s**, which is `RECOVER_LOST_US` from a boot whose
+  `last_beacon_us` is zero. The 30 s idle is real, it is paid on every cold start,
+  and it is the first 36 % of that 82.6 s.
 - **Listening is bounded by design and the bound is not a defect**:
   `DEVICE_ENROL_WINDOW_MS` is 600 000, so the node stops listening ten minutes
   after power-up ([ADR-0024](../radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md)).
@@ -132,7 +166,8 @@ Three things this entry still owns:
   compile-time constant, and the reopen route on a console-less unit — item 58.
 - **Camping is still missing between recoveries.** Recovery starts only after
   `RECOVER_LOST_US`, so a device that has lost the beacon idles, goes stale and
-  waits 30 s to notice. More recovery does not close that; camping does.
+  waits 30 s to notice — **measured at 30.09 s on a cold start**, above. More
+  recovery does not close that; camping does.
 
 `Core/Src/main.c`, `Core/Src/device.c` -> `device_service`, `invite_service`.
 `radio_devices_docs/wl55_device/radio/pairing.md`.
