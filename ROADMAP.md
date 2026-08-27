@@ -940,6 +940,35 @@ wear; this needs the same treatment.
 
 ## Bench debts
 
+### 87. `linkjoin.py` reports 0 % for frames the hub accepted — `defect`
+
+RG-A-6 of regression run `2026-08-27-1`, on `0c836c6`. Over its own 300 s window
+on node B it printed **21 sent, 0 accepted, 0.0 %**, with every row carrying a
+device offset and `arrival -`.
+
+**The hub's own event feed names the same superframes as arrivals.** Paged from
+`since=0` to `last_id`, the server holds **188 uplink events inside the window
+333144..333896**, the first of them `(id 368, sf 333144, 0xfef91007)` — the exact
+superframe of the first row the tool marked `lost`. Joining the same 21 sends
+against those events by superframe gives 21 of 21. The hub console read node B at
+`48/0` with `missed_run 0`, and the hub-wide ladder **the tool itself printed**
+says `sync matched 38, passed CRC 38, CRC failed 0`. So its two halves disagree
+inside one run and the per-opportunity join is the wrong one.
+
+**The 21 of 21 is not a delivery figure.** The tool also printed `609 device
+record(s) lost on the VCP`, and `specs/06-regression.md` §6.2 refuses a window
+where that fraction is large — RG-A-6 is **not graded**, and the second
+implementation exists to show the tool is broken rather than to replace its
+number.
+
+Two undiagnosed oddities for whoever takes it: the window's rows fall in two
+clusters 600 superframes apart in a 300 s run, which looks like a stale serial
+buffer replayed at startup; and 609 lost records over 300 s is far above the
+record rate, which may be the sequence counter being compared across the node's
+reset earlier in that run.
+
+`tools/linkjoin.py`. Evidence in `bench/runs/2026-08-27-1/linkjoin-defect.txt`.
+
 ### 19. Node B's PA ramp has never been captured from outside — `hub`
 
 Offered by the hub session, which owns the SDR. It is the measurement item 11
