@@ -138,7 +138,7 @@ static void test_refusals(void) {
           (int)rc);
 }
 
-/* Would have caught item 55: no hub key must still reach the accept path. */
+/* ADR-0024: a device with no hub key must still reach the accept path. */
 static void test_no_hub_key_still_listens(void) {
     uint8_t hub_static[32];
     uint32_t sf = 0;
@@ -149,7 +149,7 @@ static void test_no_hub_key_still_listens(void) {
     rc = pair_init_verify(&ctx, PV_FRAME_INIT, sizeof(PV_FRAME_INIT),
                           0u, PAIR_INIT_SUPERFRAME - 1u, &sf, hub_static);
     CHECK(rc == PAIR_INIT_OK,
-          "a device holding no hub key was refused, which is device item 55, rc %d",
+          "a device holding no hub key was refused, against ADR-0024, rc %d",
           (int)rc);
 }
 

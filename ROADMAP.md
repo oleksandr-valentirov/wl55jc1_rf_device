@@ -26,7 +26,7 @@ marking at their own sites. **In the end it cost this queue nothing**: the entry
 that leaned hardest on a retired capture was item 78, and what retired item 78 was
 a live window on two boards, taken with no receiver on the bench at all.
 
-**Cleaned four times.** The first pass retired eight closed entries and moved the
+**Cleaned seven times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
 and `testing/bench-harness.md` under `wl55_device/`. The second retired item 34,
@@ -76,6 +76,53 @@ baseline. Item 82 — `TLM_TX_DENY` naming one gate whatever shut the other — 
 fixed in `feat(instruments)` the same day. **It was fixed without the queue being
 read first**, re-derived from a board instead of looked up, which cost nothing
 here and is the reason this file exists.
+
+**The seventh pass, 2026-08-27, retired item 84** — *a device with no transmit
+floor listens at the rarest cadence in the system*. `report_service` was entered
+only on the grant, so a floorless device — which is every board between
+reacquiring the grid and its first downlink, because ADR-0023's floor is not
+restored from flash — opened a receiver one superframe in eight while the hub's
+downlink opportunities came every two. It had nothing to send and was the least
+available receiver on the link. Fixed in `2992e37`: the loop is entered while
+`tx_floor_known` is 0 and `RADIO_DOWNLINK_ON(sf)` holds, the grant untouched.
+Verified on node A over four boots against the pre-change image on the same board
+and the same air — **fourteen of fourteen** floorless opportunities opened a
+window, where the old gate could reach only five of them at all, and the two
+populations separate at **53 of 53 carrying a frame on the grant against 0 of 9
+on the extra windows**. Reasoning on
+[`radio/beacon.md`](../radio_devices_docs/wl55_device/radio/beacon.md) § a device
+with no floor.
+
+**What that pass did not measure is the benefit, and it says so at its own site.**
+Every arm ran with `frames_ok` non-zero for node A, so the hub does not radiate to
+it outside its own window and the extra windows were empty by construction. The
+state item 84 was written about is `frames_ok == 0`, which needs a `release` here
+plus `device remove` and `device add` on the hub — **asked rather than taken**,
+with the prediction to judge it by written down before the arm exists, in
+`../bench/journal/2026-08-27-device.md`.
+
+**Item numbers are not reused, and three of them were.** `82` was issued to
+`exchange.h` reaching an implementation and retired in the fourth pass, then
+issued again to `TLM_TX_DENY` naming one gate whatever shut the other, retired
+in the sixth; `84` went to this tree compiling the hub's `hop.c`, then to the
+floorless cadence; `85` to `release` refusing to reopen the window only it could
+reopen, and then to `report_band`. **Three collisions in four passes is a rate,
+not an accident** — the reuse happens because the next number is read off the
+queue, and a retirement is exactly what takes it off. **The cost is already paid
+and cannot be recalled.**
+[ADR-0030](../radio_devices_docs/radio/decisions/0030-radio-stack-is-the-link-layer-and-the-session-layer-is-a-separate-consumer.md)
+says *device item 82* and
+[ADR-0032](../radio_devices_docs/radio/decisions/0032-the-library-is-a-submodule-and-the-profile-holds-the-numbers.md)
+says *device item 84*, both meaning the first of their pair;
+`../bench/RESOURCES.md` and the 2026-08-27 journal say *item 84* and mean the
+second. **Decision records are immutable, so both readings stand as written and
+nothing anywhere disagrees** — which is the failure, not the ambiguity. The live
+entry that would have been the fourth collision was renumbered to **86** in this
+pass, and the next number to issue is **87**. A number retired is spent; a gap
+is not an opening. **No number the hub's own cleaning notes name as retired
+appears among its live entries**, checked 2026-08-27 — so this is a habit of
+this file rather than of the format. Its first two passes give a count and not
+the numbers, so that check is not a proof of the hub's whole history.
 
 **Status words**
 
@@ -1204,7 +1251,7 @@ Two things are owed and neither is the constant itself.
 `Core/Src/hublogic.c` -> `WL55_HUB_DEV_ID`, `CMakeLists.txt:65`.
 `radio_devices_docs/radio/pairing.md` § the post-ADR-0026 baseline.
 
-### 85. `report_band` is the third static the console move left without a writer — `defect`
+### 86. `report_band` is the third static the console move left without a writer — `defect`
 
 `Core/Src/device.c` declares it, reads it twice in `report_service`, and **nothing
 in this tree assigns it**. It is zero for the life of every image, so the filter
