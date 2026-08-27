@@ -595,7 +595,12 @@ void report_service(void) {
     uint32_t sf = superframe_now(&sframe) + 1u;
     /* Anchored to the hub's counter: counting from the last send re-phases.
      * radio_devices_docs/wl55_device/radio/timebase.md */
-    if (join_res.report_every == 0u || (sf % join_res.report_every) != 0u)
+    if (join_res.report_every == 0u)
+        return;
+    /* Floorless has nothing to send, so it opens every downlink opportunity.
+     * radio_devices_docs/wl55_device/radio/beacon.md */
+    uint8_t listen = (uint8_t)(!tx_floor_known && RADIO_DOWNLINK_ON(sf));
+    if ((sf % join_res.report_every) != 0u && !listen)
         return;
     if (report_attempt_sf == sf)
         return;
@@ -641,10 +646,8 @@ void report_service(void) {
         tlm_emit(TLM_TX_DENY, sf, TLM_WHY_CHANNEL, grid, report_attempt_sf);
         return;
     }
-    if ((sf % join_res.report_every) != 0u) {
-        tlm_emit(TLM_TX_DENY, sf, TLM_WHY_OFFBEAT, 0u, 0u);
-        return;
-    }
+    /* Read before the downlink block: a rate granted there is next cycle's. */
+    uint8_t granted = (uint8_t)((sf % join_res.report_every) == 0u);
     /* After the beacon: skipping the receive would confound this with
      * staleness. */
     if ((report_band == 1u && grid > radio_join_slot()) ||
@@ -682,6 +685,13 @@ void report_service(void) {
                              (uint32_t)(-rc));
             }
         }
+    }
+
+    /* The extra windows are receive only: the grant alone says what may transmit.
+     * radio_devices_docs/wl55_device/radio/beacon.md */
+    if (!granted) {
+        tlm_emit(TLM_TX_DENY, sf, TLM_WHY_OFFBEAT, 0u, 0u);
+        return;
     }
 
     memset(&rep, 0, sizeof(rep));

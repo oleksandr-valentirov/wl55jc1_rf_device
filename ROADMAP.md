@@ -1204,47 +1204,6 @@ Two things are owed and neither is the constant itself.
 `Core/Src/hublogic.c` -> `WL55_HUB_DEV_ID`, `CMakeLists.txt:65`.
 `radio_devices_docs/radio/pairing.md` § the post-ADR-0026 baseline.
 
-### 84. A device with no transmit floor listens at the rarest cadence in the system — `defect`
-
-`report_service` opens a receiver only on `(sf % join_res.report_every) == 0`, and
-nothing else on this node opens one while it is healthy enough to stay out of
-recovery. So a device that has **never opened a downlink** — `tx_floor_known == 0`,
-which is every boot, because
-[ADR-0023](../radio_devices_docs/radio/decisions/0023-the-hub-supplies-the-transmit-floor.md)'s
-transmit floor is not restored from flash while `dl_floor` is — listens once every
-eight superframes, while the hub's downlink opportunities come every
-`RADIO_DOWNLINK_EVERY`, which is **two**.
-
-**It has nothing to transmit and it is the least available thing on the link.**
-Listening on every opportunity while floorless costs receive time and nothing
-else: no air, no duty cycle, no contract change, and it ends the moment
-`tx_floor_known` is set.
-
-**Measured 2026-08-26.** Node A opened **24 windows in 466 s** and a downlink
-frame arrived in **every one of them**, all addressed to another device's slot,
-while the hub was sending it a downlink on **three of every four** opportunities —
-and it was awake for none of those three. At the faster cadence it would have
-caught the first within two superframes.
-
-**This is half of a defect whose other half is the hub's**, and the rotation that
-decides which device starves is in `../bench/journal/2026-08-26-device.md`. **This
-half is worth having on its own**: a device that cannot transmit should be
-maximally available to receive the frame that would change that, whatever rule the
-other end uses to hand them out.
-
-Three things the change has to keep:
-
-- **the beacon window moves with it.** `open_at` is anchored to
-  `sframe.last_beacon_us`, so a downlink window in a superframe whose beacon was
-  not heard is skipped as already past. It is the pair that speeds up.
-- **the transmit gate stays `(sf % report_every) == 0`.** The grant is the
-  contract and the extra superframes must not carry a frame, so the
-  `TLM_WHY_OFFBEAT` return moves **below** the downlink block instead of in front
-  of it.
-- **the reorder is free only while the band filter cannot fire** — item 85.
-
-`Core/Src/device.c` -> `report_service`.
-
 ### 85. `report_band` is the third static the console move left without a writer — `defect`
 
 `Core/Src/device.c` declares it, reads it twice in `report_service`, and **nothing
@@ -1260,9 +1219,14 @@ fires is silent in the permissive direction** — nothing is refused, nothing is
 logged, and every population it should have split comes back whole.
 
 Two consequences. The instrument does not exist, so **no measurement anywhere may
-be quoted as band-discriminated**. And the dead branch sits between the beacon
-receive and the downlink window, which is exactly where item 84 has to move code
-past it.
+be quoted as band-discriminated**. And it sits between the beacon receive and the
+downlink window, which since 2026-08-27 is the path **every** pass of a floorless
+device takes: the grant check moved below the downlink block and this one did not,
+so a writer appearing for `report_band` would silence the very windows a device
+with no transmit floor opens to end that state. Reviving it means moving it down
+beside the grant, and the reasoning is on
+[`radio/beacon.md`](../radio_devices_docs/wl55_device/radio/beacon.md) § a device
+with no floor.
 
 **Whether it should come back is a question rather than a fix.** `opp <k|all>`
 returned under `-DWL55_DEV_COMMANDS=ON` because a named instrument had a named
