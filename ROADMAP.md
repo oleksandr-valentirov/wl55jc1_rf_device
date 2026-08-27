@@ -1136,6 +1136,16 @@ a contract change:
 changed: not that k = 3 has no writer — it has one, under a dev macro — but that
 nothing on this board can ever have anything urgent to say.
 
+**The shape of the answer is now a decision record, so it does not get
+re-argued.** A hybrid MAC — a contention event window, `EVENT_NOTIFY` /
+`GRANT` / `EVENT_DATA`, priority backoff — was proposed on 2026-08-27 and
+refused: the grid already gives this device 611, 611 and 778 ms between its own
+opportunities, a two-phase grant costs at least two superframes against a 1 s
+deadline, and retry air cannot be budgeted while the governor above is unbuilt.
+[ADR-0034](../radio_devices_docs/radio/decisions/0034-the-event-channel-is-the-grid.md)
+holds the arithmetic and the condition to revisit it. **The four pieces above are
+unchanged by it** — that record chose nothing new, it closed a door.
+
 **Nothing may quote three opportunities until this closes**, including
 `radio/tdma.md`'s deadline argument and REQ-F-10's stated state.
 
