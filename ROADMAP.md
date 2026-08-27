@@ -26,7 +26,7 @@ marking at their own sites. **In the end it cost this queue nothing**: the entry
 that leaned hardest on a retired capture was item 78, and what retired item 78 was
 a live window on two boards, taken with no receiver on the bench at all.
 
-**Cleaned seven times.** The first pass retired eight closed entries and moved the
+**Cleaned eight times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
 and `testing/bench-harness.md` under `wl55_device/`. The second retired item 34,
@@ -859,46 +859,6 @@ downlink that exists.
 
 `radio_devices_docs/radio/crypto/key-lifecycle.md`.
 
-### 22. Three transmits a superframe is over the 1% duty cycle — `defect` `contract`
-
-`radio/phy.md` calls 1% the most binding constraint in the project. A device
-using all three of item 4's opportunities every superframe is over it, and the
-number moved when the wire did:
-
-    wire            frame     k=3      k=2
-    42 B, old      6720 us   1.008%   0.672%
-    50 B, link_v4  8000 us   1.200%   0.800%
-    54 B, 8 B pre  8640 us   1.296%   0.864%
-
-**The 1.008% first written here was computed on the 42-byte wire.** link_v4 took
-the frame to 50 bytes and the sustained k=3 figure to **1.200%** - twenty percent
-worse, and it moved silently because nothing recomputes it. At 25 kbps it is
-2.400%, so the deadline retires that rate for event-capable devices outright.
-
-**This is now the only duty-cycle constraint still binding anything.** The hub
-found that `RADIO_DOWNLINK_EVERY 2` was justified by a 1.42% figure that had been
-computed on a 31-byte downlink; at 39 bytes and 50 kbps the real total is 0.800%,
-and three copies of the stale 0.74% survived the change - including a comment
-sitting beside the assert that recomputes it correctly on every build. Half rate
-is a choice there now, not a requirement (their item 33). **The uplink k=3 figure
-above is the one that still refuses.**
-
-k=2 is 0.800% and still safe, but its margin fell from 0.33 to 0.20 points.
-
-The 8-byte row is tonight's experiment, not a proposal: it is the cost if the
-preamble arm turns into a default. The bench cadence is one cycle in eight, so
-this board is at 0.162% and never approached the bound.
-
-Nothing on either side would refuse: every individual frame is legal and no
-governor exists. The bound has to be stated in the contract, not inferred.
-
-**At this margin the SDR cannot answer the question either.** Attribution
-depends on selecting bursts by air time, and 50 kbps shrinks the frames while
-k=3 multiplies them. The method needs re-validating before it gates anything.
-Item 10 stops being tidiness here: at 1.008% the ramp decides the verdict.
-
-`radio_devices_docs/radio/phy.md` § duty cycle.
-
 ### 23. The downlink's `slot` field has three candidate meanings under k=3 — `contract`
 
 `downlink_open` refuses on `f[2] != join_res.slot` and feeds the same byte to
@@ -916,7 +876,16 @@ to the same device in the same superframe would be the same key and the same
 nonce over a different body. Whatever the contract ends up saying the `slot`
 field means, it must not make that reachable.
 
-### 25. No duty-cycle governor, and it has to be durable — `defect` `contract`
+### 25. No duty-cycle governor, and it has to be durable — `debt` `contract`
+
+**Downgraded from `defect` on 2026-08-27.** Its urgency was the burst pattern, and
+[ADR-0036](../radio_devices_docs/radio/decisions/0036-variant-1-carries-no-asynchronous-events.md)
+removed it: at one opportunity and `report_every` 8 this device spends 500 ppm
+against a 10 000 ppm ceiling, so nothing it does now needs a governor to stay
+legal. **It is load-bearing in variant 2**, where polite spectrum access accounts
+cumulative on-time per 200 kHz rather than as a percentage. The arithmetic below
+stands and was computed while three transmits a superframe were on the table.
+
 
 1% is 36 s of air an hour. **The 2.976 transmits a superframe first written here
 was the 42-byte wire too**; on link_v4's 50 bytes the same budget is 4500 frames
@@ -1065,118 +1034,6 @@ still owed is unchanged and now runnable: release, read `ident`, confirm the id
 did not move, then pair and check the id the hub sees.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
-
-### 77. REQ-F-10 has no event, so k = 3 has nothing that could fire it — `defect` `blocking`
-
-`report_opp` and `report_opp_all` are declared at `Core/Src/device.c:380` and
-`:382`, read at `:707`, `:708` and `:713`, and **assigned nowhere in this tree**.
-Both are file-scope statics, so both are zero for the life of every image, and
-`k_first = k_last = 0`: the report loop runs once, always on `k = 0`.
-
-**They had a writer and it was the console.** `cli.c` carried
-`report opp <k|all>` — `report_opp_all = 1u` under the comment *"Same grant, a
-later slot: the k=3 geometry used as an instrument"*. `08e244e`, *"the console
-stops being load-bearing"*, moved the reporting loop into `device.c` and **took
-the three reads without the write**. Nothing since has replaced it, by console or
-by grant.
-
-That splits this into two facts that are easy to conflate:
-
-- **k = 3 has never been autonomous.** It was always an operator typing a command.
-  The 20 % figure on [`radio/tdma.md`](../radio_devices_docs/radio/tdma.md) — 151
-  cycles, 453 frames, 39 / 15 / 6 % per opportunity — is a real measurement taken
-  with that command held on.
-- **Today it cannot be reached at all**, so even the instrument is gone, and every
-  delivery figure measured since `08e244e` is a **single-opportunity** figure.
-
-**Two instruments say so and they were not asked to agree** — and **both readings
-are records now, not measurements**: run `2026-08-24-1`'s capture was deleted on
-2026-08-26 with every dataset before `2026-08-25-2`
-(`../bench/runs/README.md`). What they established still stands, because the
-source half of it is read off this tree and not off the air. Regression run
-`2026-08-24-1`, check RG-A-5: measured duty cycle **0.043 %**, against 0.050 %
-predicted for k=1 and 0.150 % for k=3 at `report every 8`. `airgrid`'s C3 reports
-`[3, 0, 0]` on the same window — its `[3, 1, 0]` counts the 868.000 MHz neighbour
-at 16 dB SNR as an uplink, against this system's own 66 dB.
-
-`RADIO_SLOT_OPPS` is 3, carries a static assert, is the denominator of the
-duty-cycle tripwire in `radio_slots.h`, and is the whole of **REQ-F-10**'s
-argument that the event deadline is met by three opportunities inside one second.
-**That argument has never had a mechanism under it.**
-
-**The instrument is back and the item is not closed.** `opp <k|all>` is restored
-under `-DWL55_DEV_COMMANDS=ON`, off by default, so the product console keeps the
-read-only property `device.h` states and the developer build breaks it in one
-named place. Verified on node B in both directions: the dev image answers
-`opp all` with `opps all 3 of 3  slots 0/65/130` and refuses `opp 9`; the product
-image's own help does not list the command and still says `release` is the only
-one that writes.
-
-**`state` now prints the regime in both builds** — `opps 1 of 3  k=0  slot 2` —
-because run `2026-08-24-1` had to infer `k` from a duty cycle, and no run should
-have to again.
-
-**Three entries touch REQ-F-10 and this is the boundary between them.** Item 4
-owns the deadline budget and whether the link delivers; item 22 owns the duty
-cycle a sustained k = 3 exceeds; **this item owns the mechanism, and there is
-none.** Nothing here restates either of the other two.
-
-**The autonomous grant this entry used to ask for is not owed at all.** Settled
-2026-08-26 on [`radio/tdma.md`](../radio_devices_docs/radio/tdma.md) § *no
-sustained configuration meets the deadline inside the duty budget*, which is where
-the arithmetic lives: **every** sustained setting is either over the band's
-ceiling or short of the 1 s deadline, so a mechanism granting one — by downlink,
-by local policy or by a compile-time default — would grant an illegal transmitter
-or a configuration that misses the requirement it exists for. That page also
-carries what closing it would cost in the frame or the bit rate.
-
-**What is legal is the burst**, and the regulation says so from its own side:
-`Tobs` is an hour and the quantity is cumulative ON time
-([`radio/phy.md`](../radio_devices_docs/radio/phy.md), EN 300 220-2 cl. 4.4.3.2),
-so one event costs three frames' air and nothing for the silence around it.
-**k = 3 is an event mechanism and never an operating mode.**
-
-**So what is missing is the event, and this firmware has none.** `sensor.h` and
-`sensor.c` carry no threshold, no interrupt and no notion of one; `sensor_read()`
-is called once inside `report_service`, and the transmit is gated on
-`(sf % join_res.report_every) == 0`. Four pieces are owed and only one of them is
-a contract change:
-
-- **what an event is on this board** — `sensor.c`, and it is the developer's
-  choice before it is anyone's code;
-- **a transmit that is not gated on the report cadence** and uses every
-  `RADIO_SLOT_OPPS` — `device.c`. Neither end of the link has to move for it: the
-  hub opens one receive window across the whole uplink region **every** superframe
-  (`uplink_windows 20782` over ~20 782, read 2026-08-26), the nonce is
-  `(superframe, dev_id, direction, slot)` so three frames in one superframe are
-  three nonces, and `seal_claim` already admits them;
-- **one bit each way**, so the two ends can tell an event from a scheduled report.
-  `radio_pair_grant.flags` has no `RADIO_GRANT_FLAG_*` defined at all and
-  `radio_uplink_report_t.flags` has four spare bits, so it is a **bit definition
-  and not a layout change** — and it still binds the hub, so it is agreed there
-  first;
-- **a duty-cycle governor**, which is **items 22 and 25** here and item 10 on the
-  hub, and which neither firmware has built. It is not a fourth thing to queue —
-  item 25 already states the right shape, *a budget over the hour and in bytes,
-  not an integer per superframe* — but the burst argument above is only sound
-  while something enforces that hour, so this item cannot land before it does.
-
-**REQ-F-10 stays `not met` until the event path lands**, and the reason has
-changed: not that k = 3 has no writer — it has one, under a dev macro — but that
-nothing on this board can ever have anything urgent to say.
-
-**The shape of the answer is now a decision record, so it does not get
-re-argued.** A hybrid MAC — a contention event window, `EVENT_NOTIFY` /
-`GRANT` / `EVENT_DATA`, priority backoff — was proposed on 2026-08-27 and
-refused: the grid already gives this device 611, 611 and 778 ms between its own
-opportunities, a two-phase grant costs at least two superframes against a 1 s
-deadline, and retry air cannot be budgeted while the governor above is unbuilt.
-[ADR-0034](../radio_devices_docs/radio/decisions/0034-the-event-channel-is-the-grid.md)
-holds the arithmetic and the condition to revisit it. **The four pieces above are
-unchanged by it** — that record chose nothing new, it closed a door.
-
-**Nothing may quote three opportunities until this closes**, including
-`radio/tdma.md`'s deadline argument and REQ-F-10's stated state.
 
 ### 79. `linkjoin.py`'s `hub - nominal` column compares two different origins — `defect`
 
