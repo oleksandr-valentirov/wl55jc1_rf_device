@@ -26,6 +26,16 @@ marking at their own sites. **In the end it cost this queue nothing**: the entry
 that leaned hardest on a retired capture was item 78, and what retired item 78 was
 a live window on two boards, taken with no receiver on the bench at all.
 
+**Item 89 closed on 2026-08-28, measured rather than argued.** `up_seq` shipped
+as an index and run `2026-08-28-3` read the count restarting at **1** on the air:
+twelve consecutive frames at a 16 s step whose value equalled the frame's own
+ordinal, against the hub's `frames_ok` climbing by twelve. Sixty-five further
+samples carried **zero** instances of `up_seq < frames_ok`, the shape the defect
+produced on every frame. The arithmetic now has a host arm, `test/test_upseq.c`,
+which carries the defect as a parameter so the relation is shown to refuse; the
+base it counts from is in `radio_stack/inc/radio_protocol.h`, where the ambiguity
+was. `bench/runs/2026-08-28-3/VERDICT.md`.
+
 **Cleaned eight times.** The first pass retired eight closed entries and moved the
 reasoning worth keeping from each to its page in `../radio_devices_docs` — see
 `radio/hopping.md`, `radio/beacon.md`, `radio/timebase.md`, `testing/telemetry.md`
@@ -335,35 +345,6 @@ moment (`verification` skill).
 ---
 
 ## Defects
-
-### 89. `up_seq` was an index; the fix is unproven on air — `defect` `contract`
-
-**Found by run `2026-08-28-2`, RG-T-5, REQ-F-6.** `Core/Src/device.c` sealed
-`up_seq` **before** spending it, so a frame carried a zero-based index of itself
-while
-[ADR-0037](../radio_devices_docs/radio/decisions/0037-the-application-payload-is-the-downlinks-and-the-frame-does-not-grow.md)
-clause 1 specifies *uplink transmits attempted since boot*. The hub could never
-read more than `frames_ok - 1` on a link with no loss, and `devices` printed
-**`4 accepted here, 3 attempted there`** — an impossibility, on every frame.
-
-**Fixed.** The counter is `Core/Inc/upseq.h`, and taking the value a frame
-carries and spending it are two calls, so a refused seal still leaves no gap.
-The library states the base it left unstated:
-`radio_stack/inc/radio_protocol.h`, *counts from 1, so 0 is no report yet -
-until it wraps past 65535*. The sentinel is that and no stronger; twelve days at
-a report every eight superframes.
-
-**Why nothing caught it, and what now does.** `radio_stack/test/test_link.c`
-pins the field's *layout* and three mutations were red against that — a wrong
-count lays out exactly like a right one. `test/test_upseq.c` is the arm that was
-missing: it drives the loop's three outcomes against a second counter, and it
-carries the defect itself as a parameter, so the relation is shown to refuse.
-What it cannot see is `device.c` open-coding the arithmetic again; the loop is
-not host-compilable and the tie is that it calls those two functions.
-
-**What is owed is the air half.** RG-T-5 has never passed, and the first green is
-a first proof. `bench/runs/2026-08-28-2/VERDICT.md`.
-
 
 ### 6. ADR-0023's transmit floor has never been exercised across a reset — `defect`
 
