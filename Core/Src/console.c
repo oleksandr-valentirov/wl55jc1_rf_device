@@ -91,8 +91,27 @@ static void show_state(void) {
             (unsigned long)v.tx_floor);
     else
         out("tx floor  none yet - no downlink opened since boot\r\n");
-    out("counts  reports %lu  recoveries %lu\r\n",
-        (unsigned long)v.reports_sent, (unsigned long)v.recover_entered);
+    out("counts  reports %lu  recoveries %lu  up_seq %u\r\n",
+        (unsigned long)v.reports_sent, (unsigned long)v.recover_entered,
+        (unsigned)v.up_seq);
+    /* The one level this node cannot measure, so absent is not zero. ADR-0037 */
+    if (v.rssi_up_valid)
+        out("rssi_up %d dBm as the hub measured it\r\n", (int)v.rssi_up_dbm);
+    else
+        out("rssi_up never returned\r\n");
+    /* Held, never interpreted; the witness is what the ack carried back. ADR-0037 */
+    if (v.app_any) {
+        out("app     %u bytes  sum %02X  ", (unsigned)v.app_len,
+            (unsigned)v.app_witness);
+        for (unsigned i = 0; i < v.app_len; i++)
+            out("%02X", (unsigned)v.app[i]);
+        out("\r\n");
+    } else {
+        out("app     none this boot\r\n");
+    }
+    if (v.app_refused != 0u)
+        out("app     %lu refused for a length past the array\r\n",
+            (unsigned long)v.app_refused);
     /* Every number names the population it is counted over. ROADMAP item 78
      * radio_devices_docs/wl55_device/radio/beacon.md */
     out("beacon  %lu missed of %lu windows\r\n",

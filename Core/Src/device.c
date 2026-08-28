@@ -162,7 +162,7 @@ static int hop_channel_live(uint32_t sf, uint8_t *ch) {
 /* Idle is what is left over, so it is a lower bound on load and not an upper one.
  * radio_devices_docs/wl55_device/testing/console.md */
 
-#include "link_v6.h"   /* both data frames at 39 bytes, and the only downlink vector */
+#include "link_v7.h"   /* both data frames at 39 bytes, and the only downlink vector */
 
 /* A size assert answers "same shape", never "same contract": v4 built clean on v5.
  * radio_devices_docs/wl55_device/testing/host-tests.md */
@@ -176,6 +176,19 @@ static uint32_t hub_us_to_local(uint32_t hub_us);
 /* What the next report echoes. The wire cannot tell its zero from cmd 0 seq 0. */
 static uint8_t  dl_ack_seq, dl_ack_cmd, dl_ack_arg, dl_any;
 static uint32_t dl_applied, dl_repeats, dl_replays, dl_opened;
+
+/* Held and never interpreted; the witness is what was acknowledged for them.
+ * radio_devices_docs/radio/decisions/0037-the-application-payload-is-the-downlinks-and-the-frame-does-not-grow.md */
+static uint8_t dl_app[6], dl_app_len, dl_app_any, dl_app_witness;
+static uint32_t dl_app_bad;
+
+/* What the hub measured on this node's uplink, which nothing here can measure.
+ * radio_devices_docs/radio/decisions/0037-the-application-payload-is-the-downlinks-and-the-frame-does-not-grow.md */
+static int8_t  hub_rssi_up_dbm;
+static uint8_t hub_rssi_up_valid;
+
+/* Attempts, not deliveries: the hub's frames_ok is the numerator over this. */
+static uint16_t up_seq;
 
 /* A silence this device imposed on itself. A reboot is not one: uptime_s says that.
  * radio_devices_docs/radio/tdma.md */
@@ -345,6 +358,14 @@ static void dl_floor_load(void) {
 
 /* An unknown cmd is acked, not refused: the ack says only that it arrived. */
 static void downlink_apply(uint32_t sf, const radio_downlink_cmd_t *cmd) {
+    /* It rides the keepalive and carries no seq, so it is read before the gate.
+     * radio_devices_docs/radio/decisions/0037-the-application-payload-is-the-downlinks-and-the-frame-does-not-grow.md */
+    if (cmd->cmd == RADIO_CMD_LINK) {
+        hub_rssi_up_dbm   = RADIO_LINK_ARG_TO_DBM(cmd->arg);
+        hub_rssi_up_valid = 1u;
+        tlm_emit(TLM_RX_LINK, sf, cmd->arg & 0xFFu,
+                 (uint32_t)(int32_t)hub_rssi_up_dbm, 0u);
+    }
     /* The keepalive names no command, so it must not clear the echo of one. */
     if (cmd->cmd_seq == RADIO_CMD_SEQ_NONE) {
         tlm_emit(TLM_RX_CMD, sf, cmd->cmd, cmd->cmd_seq, 2u);
@@ -355,18 +376,45 @@ static void downlink_apply(uint32_t sf, const radio_downlink_cmd_t *cmd) {
         tlm_emit(TLM_RX_CMD, sf, cmd->cmd, cmd->cmd_seq, 1u);
         return;
     }
+    /* A length past its array is unacked rather than clamped. */
+    if (cmd->cmd == RADIO_CMD_APP && cmd->app_len > sizeof(cmd->app)) {
+        dl_app_bad++;
+        tlm_emit(TLM_RX_CMD, sf, cmd->cmd, cmd->cmd_seq, 4u);
+        return;
+    }
     if (cmd->cmd == RADIO_CMD_SET_RATE && cmd->report_every != 0u) {
         join_res.report_every = cmd->report_every;
         rate_unsaved = 1u;
     }
+    if (cmd->cmd == RADIO_CMD_APP) {
+        /* Cleared first: a shorter command must not leave the tail of a longer one. */
+        memset(dl_app, 0, sizeof(dl_app));
+        memcpy(dl_app, cmd->app, cmd->app_len);
+        dl_app_len     = cmd->app_len;
+        dl_app_any     = 1u;
+        dl_app_witness = radio_app_witness(cmd->app, cmd->app_len);
+        tlm_emit(TLM_RX_APP, sf, cmd->app_len,
+                 (uint32_t)dl_app[0] | ((uint32_t)dl_app[1] << 8) |
+                 ((uint32_t)dl_app[2] << 16) | ((uint32_t)dl_app[3] << 24),
+                 (uint32_t)dl_app[4] | ((uint32_t)dl_app[5] << 8));
+    }
     dl_ack_seq = cmd->cmd_seq;
     dl_ack_cmd = cmd->cmd;
-    /* What was applied, not what was asked: only SET_RATE carries an argument. */
-    dl_ack_arg = (cmd->cmd == RADIO_CMD_SET_RATE) ? join_res.report_every : 0u;
+    /* What was applied, not what was asked; APP answers with its own witness. */
+    if (cmd->cmd == RADIO_CMD_SET_RATE)
+        dl_ack_arg = join_res.report_every;
+    else if (cmd->cmd == RADIO_CMD_APP)
+        dl_ack_arg = dl_app_witness;
+    else
+        dl_ack_arg = 0u;
     dl_any     = 1u;
     dl_applied++;
     tlm_emit(TLM_RX_CMD, sf, cmd->cmd, cmd->cmd_seq, 0u);
 }
+
+/* The array the view copies out must be the array the wire brings. ADR-0037 */
+_Static_assert(sizeof(dl_app) == sizeof(((radio_downlink_cmd_t *)0)->app),
+               "the held application bytes are not the downlink's");
 
 
 /* Reports bytes and refuses to interpret them: the window and rate are contract.
@@ -759,11 +807,14 @@ void report_service(void) {
             tlm_emit(TLM_TX_DENY, sf, TLM_WHY_LATE, grid, slot_n);
             continue;
         }
+        /* Spent at the seal, where the nonce is: a refused seal left no gap. */
+        rep.up_seq = up_seq;
         if (uplink_seal(sf, slot_n, join_res.dev_id_be, join_res.session,
                         &rep, f) != 0) {
             tlm_emit(TLM_TX_DENY, sf, TLM_WHY_SEAL, 0u, 0u);
             continue;
         }
+        up_seq++;
 
         uint32_t air = 0;
         while (!timebase_elapsed(slot_at - UPLINK_LEAD_US)) { }
@@ -1031,6 +1082,14 @@ void device_snapshot(device_view_t *v) {
     v->downlinks_repeat  = dl_repeats;
     v->downlinks_replay  = dl_replays;
     v->downlink_floor    = dl_floor_known ? dl_floor : 0u;
+    v->up_seq            = up_seq;
+    v->app_len           = dl_app_len;
+    v->app_any           = dl_app_any;
+    v->app_witness       = dl_app_witness;
+    v->app_refused       = dl_app_bad;
+    memcpy(v->app, dl_app, sizeof(v->app));
+    v->rssi_up_dbm       = hub_rssi_up_dbm;
+    v->rssi_up_valid     = hub_rssi_up_valid;
 }
 
 void device_init(void) {

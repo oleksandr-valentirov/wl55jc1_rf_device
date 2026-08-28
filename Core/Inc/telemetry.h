@@ -31,6 +31,8 @@ typedef enum {
     TLM_JOIN_OK,
     TLM_TX_HOLD,
     TLM_RX_DL_MISS,
+    TLM_RX_APP,
+    TLM_RX_LINK,
     TLM_KIND_COUNT
 } tlm_kind_t;
 
@@ -45,7 +47,7 @@ typedef enum {
 #define TLM_WHY_FLOOR     8u   /* at or below the floor the hub's downlink set */
 #define TLM_WHY_NODOWNLINK 9u  /* no downlink has opened since this boot */
 
-/* rx.cmd `rpt`: 0 applied, 1 a repeat of the one held, 2 a keepalive, 3 a replay. */
+/* rx.cmd `rpt`: 0 applied, 1 a repeat, 2 a keepalive, 3 a replay, 4 refused. */
 
 /* rx.dlmiss `rc`: 0 the window closed empty, else downlink_open's refusal negated. */
 

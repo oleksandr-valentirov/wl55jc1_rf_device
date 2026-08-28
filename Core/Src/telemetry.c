@@ -48,6 +48,10 @@ static const tlm_kind_info_t kinds[TLM_KIND_COUNT] = {
     [TLM_TX_HOLD]   = { "tx.hold", { "sf",  "why",   "floor"         }, 0u },
     /* The downlink window's own record: opened and empty said nothing before. */
     [TLM_RX_DL_MISS] = { "rx.dlmiss", { "sf", "win",  "grid", "rc"     }, 0u },
+    /* lo is app[0..3] and hi is app[4..5], both little-endian; len says how many. */
+    [TLM_RX_APP]    = { "rx.app",  { "sf",  "len",   "lo",   "hi"    }, 0u },
+    /* half is the wire's own unit, dbm the reading; the hub measured both. */
+    [TLM_RX_LINK]   = { "rx.link", { "sf",  "half",  "dbm"           }, 0x4u },
 };
 
 static tlm_rec_t ring[TLM_RING];

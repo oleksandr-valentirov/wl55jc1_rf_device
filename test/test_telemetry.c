@@ -110,6 +110,17 @@ static void test_format(void) {
     tlm_emit(TLM_RX_DL_MISS, 262440u, 33000u, 27u, 2u);
     eqline("!15 1513 rx.dlmiss sf=262440 win=33000 grid=27 rc=2\r\n");
 
+    /* The six application bytes, four in lo and two in hi, both little-endian.
+     * radio_devices_docs/radio/tdma.md */
+    host_clock_advance(1u);
+    tlm_emit(TLM_RX_APP, 262448u, 6u, 0x44332211u, 0x6655u);
+    eqline("!16 1514 rx.app sf=262448 len=6 lo=1144201745 hi=26197\r\n");
+
+    /* The wire's half-dBm and the reading, and the reading is signed. */
+    host_clock_advance(1u);
+    tlm_emit(TLM_RX_LINK, 262456u, 74u, (uint32_t)(int32_t)-37, 0u);
+    eqline("!17 1515 rx.link sf=262456 half=74 dbm=-37\r\n");
+
     CHECK(tlm_next(NULL, 0) == 0, "a drained ring still produced a line");
 }
 

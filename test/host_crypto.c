@@ -9,7 +9,7 @@
  * `crypto_gcm_seal` below is a marker rather than a cipher.
  *
  * That is a stated limit and not a gap: what the grant carries is pinned by
- * `test_link` against `link_v6`, and this suite is about **when** the grant is
+ * `test_link` against `link_v7`, and this suite is about **when** the grant is
  * sent, which is `RADIO_PAIR_CONF_REGION` and nothing to do with a key.
  *
  * radio_devices_docs/open_hub/testing/host-tests.md

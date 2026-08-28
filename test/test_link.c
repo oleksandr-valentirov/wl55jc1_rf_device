@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "radio_protocol.h"
-#include "link_v6.h"
+#include "link_v7.h"
 
 /* A size assert answers "same shape", never "same contract": v4 built clean on v5. */
 _Static_assert(LINK_VECTORS_VERSION == RADIO_LINK_VERSION,
@@ -32,8 +32,8 @@ static void same(const char *what, const void *got, const void *want, size_t len
 int main(void) {
     /* Laid out, never sealed: order and offset are what move inside a fixed width.
      * radio_devices_docs/wl55_device/testing/host-tests.md */
-    radio_uplink_report_t rep = { -92, 0x05, 3287, 61, 0x5b, 0x01, 0x1f, 0x02,
-                                  -173, {0xa1, 0xb2} };
+    radio_uplink_report_t rep = { -92, 0x05, 3287, 61, 0x5b, 0x01, 0x1f, 0x00,
+                                  -173, 0x5e9cu };
     radio_downlink_cmd_t cmd = { RADIO_CMD_SET_RATE, 12, 0x1234u, 0x00112233u, 0x5b, 6,
                                  {0x11, 0x22, 0x33, 0x44, 0x55, 0x66} };
 
@@ -43,6 +43,12 @@ int main(void) {
     /* The vector's ack_arg is 31 and its report_every 12, so echoing the command fails. */
     same("ack_arg is not the commanded rate", &(uint8_t){LV_UPLINK_PLAIN[10]},
          &(uint8_t){0x1fu}, 1u);
+    /* A uint8 counter would drop the high byte and still lay out the same width. */
+    same("up_seq keeps both of its bytes", &(uint16_t){0x5e9cu},
+         &LV_UPLINK_PLAIN[14], 2u);
+    /* Zero is what the reserved byte means, so a length written there is visible. */
+    same("the byte before temp_c_x10 is reserved", &(uint8_t){0u},
+         &LV_UPLINK_PLAIN[11], 1u);
 
     if (failures) {
         printf("\n%d link check(s) failed\n", failures);

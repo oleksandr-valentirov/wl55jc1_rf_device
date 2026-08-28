@@ -123,7 +123,7 @@ lead, or a longer line turns a cost into a timing fault.
 
 ## Adding an event
 
-One line in the kind table in `Core/Src/telemetry.c` — name, up to three field
+One line in the kind table in `Core/Src/telemetry.c` — name, up to four field
 names, a signedness mask — and one `tlm_emit` at the site. Then update
 `test/test_telemetry.c`, which pins the rendered lines as **written-out strings**
 rather than round-tripping them: a round trip agrees with any format, including a
