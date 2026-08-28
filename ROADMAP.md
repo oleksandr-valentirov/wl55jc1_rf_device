@@ -336,6 +336,33 @@ moment (`verification` skill).
 
 ## Defects
 
+### 89. `up_seq` is an index and the wire says it is a count — `defect` `contract`
+
+**Found by run `2026-08-28-2`, RG-T-5, REQ-F-6.** `Core/Src/device.c` assigns
+`rep.up_seq = up_seq` **before** the increment, so a frame carries a zero-based
+index of itself while
+[ADR-0037](../radio_devices_docs/radio/decisions/0037-the-application-payload-is-the-downlinks-and-the-frame-does-not-grow.md)
+clause 1 specifies *uplink transmits attempted since boot*.
+
+The hub can therefore never read more than `frames_ok - 1` on a link with no
+loss, and its `devices` line prints **`4 accepted here, 3 attempted there`** — an
+impossibility, on every frame, always. Confirmed against the device's own
+`reports 6  up_seq 6` at the same instant: the local counter is right and only
+the value put on the wire is wrong.
+
+**Fix:** `rep.up_seq = ++up_seq`. It also makes 0 unreachable on the wire, so
+`dev_entry_t.up_seq == 0` gains a meaning it cannot express today — *no report
+yet* — and the hub can tell a silent device from a first frame.
+
+**Why nothing caught it.** `radio_stack/test/test_link.c` pins the *layout* of
+`up_seq` and three mutations were made red against that layout; **nothing
+anywhere pinned its arithmetic against a second counter**. The first instrument
+able to see it was a console line printed for the first time on the day the
+field landed. A host arm that ties the sealed value to `reports` would have.
+
+`bench/runs/2026-08-28-2/VERDICT.md`.
+
+
 ### 6. ADR-0023's transmit floor has never been exercised across a reset — `defect`
 
 **Replaces the two entries this file carried for the counter reservation.**
