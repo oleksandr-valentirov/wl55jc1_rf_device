@@ -336,31 +336,33 @@ moment (`verification` skill).
 
 ## Defects
 
-### 89. `up_seq` is an index and the wire says it is a count — `defect` `contract`
+### 89. `up_seq` was an index; the fix is unproven on air — `defect` `contract`
 
-**Found by run `2026-08-28-2`, RG-T-5, REQ-F-6.** `Core/Src/device.c` assigns
-`rep.up_seq = up_seq` **before** the increment, so a frame carries a zero-based
-index of itself while
+**Found by run `2026-08-28-2`, RG-T-5, REQ-F-6.** `Core/Src/device.c` sealed
+`up_seq` **before** spending it, so a frame carried a zero-based index of itself
+while
 [ADR-0037](../radio_devices_docs/radio/decisions/0037-the-application-payload-is-the-downlinks-and-the-frame-does-not-grow.md)
-clause 1 specifies *uplink transmits attempted since boot*.
+clause 1 specifies *uplink transmits attempted since boot*. The hub could never
+read more than `frames_ok - 1` on a link with no loss, and `devices` printed
+**`4 accepted here, 3 attempted there`** — an impossibility, on every frame.
 
-The hub can therefore never read more than `frames_ok - 1` on a link with no
-loss, and its `devices` line prints **`4 accepted here, 3 attempted there`** — an
-impossibility, on every frame, always. Confirmed against the device's own
-`reports 6  up_seq 6` at the same instant: the local counter is right and only
-the value put on the wire is wrong.
+**Fixed.** The counter is `Core/Inc/upseq.h`, and taking the value a frame
+carries and spending it are two calls, so a refused seal still leaves no gap.
+The library states the base it left unstated:
+`radio_stack/inc/radio_protocol.h`, *counts from 1, so 0 is no report yet -
+until it wraps past 65535*. The sentinel is that and no stronger; twelve days at
+a report every eight superframes.
 
-**Fix:** `rep.up_seq = ++up_seq`. It also makes 0 unreachable on the wire, so
-`dev_entry_t.up_seq == 0` gains a meaning it cannot express today — *no report
-yet* — and the hub can tell a silent device from a first frame.
+**Why nothing caught it, and what now does.** `radio_stack/test/test_link.c`
+pins the field's *layout* and three mutations were red against that — a wrong
+count lays out exactly like a right one. `test/test_upseq.c` is the arm that was
+missing: it drives the loop's three outcomes against a second counter, and it
+carries the defect itself as a parameter, so the relation is shown to refuse.
+What it cannot see is `device.c` open-coding the arithmetic again; the loop is
+not host-compilable and the tie is that it calls those two functions.
 
-**Why nothing caught it.** `radio_stack/test/test_link.c` pins the *layout* of
-`up_seq` and three mutations were made red against that layout; **nothing
-anywhere pinned its arithmetic against a second counter**. The first instrument
-able to see it was a console line printed for the first time on the day the
-field landed. A host arm that ties the sealed value to `reports` would have.
-
-`bench/runs/2026-08-28-2/VERDICT.md`.
+**What is owed is the air half.** RG-T-5 has never passed, and the first green is
+a first proof. `bench/runs/2026-08-28-2/VERDICT.md`.
 
 
 ### 6. ADR-0023's transmit floor has never been exercised across a reset — `defect`

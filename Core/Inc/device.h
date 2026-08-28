@@ -63,7 +63,7 @@ typedef struct device_view {
     uint32_t downlinks_repeat;  /**< carried the command already held, so nothing was applied */
     uint32_t downlinks_replay;  /**< authenticated, and not newer than the durable floor */
     uint32_t downlink_floor;    /**< the floor itself, 0 while none has been established */
-    uint16_t up_seq;            /**< uplinks attempted this boot, as the next frame will carry */
+    uint16_t up_seq;            /**< uplinks sealed this boot, which is what the last frame carried */
     uint8_t  app_len;           /**< bytes the last accepted RADIO_CMD_APP carried */
     uint8_t  app_any;           /**< whether one has arrived at all this boot */
     uint8_t  app[6];            /**< those bytes, held and never interpreted */

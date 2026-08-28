@@ -14,7 +14,7 @@ SESSION_LAYER = ../radio_stack/src/exchange.c ../Core/Src/kdf.c \
                 ../Core/Src/sha256.c
 
 TESTS = test_fingerprint test_hop test_hublogic test_invite test_link \
-        test_telemetry test_uptime
+        test_telemetry test_upseq test_uptime
 
 # A change to a vector header must rebuild the tests that check it. Without
 # this the binaries stayed up to date against their own sources while the
@@ -45,6 +45,10 @@ test_hop: test_hop.c hop_reference.c ../radio_stack/src/hop.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_link: test_link.c
+	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
+
+# Header-only, so the arithmetic the loop runs is the arithmetic checked here.
+test_upseq: test_upseq.c
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 test_fingerprint: test_fingerprint.c host_timebase.c ../Core/Src/pairing.c ../Core/Src/sha256.c

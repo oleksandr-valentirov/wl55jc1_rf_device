@@ -30,6 +30,7 @@
 #include "wire_v4.h"
 #include "telemetry.h"
 #include "sensor.h"
+#include "upseq.h"
 
 extern UART_HandleTypeDef hcom_uart[];
 
@@ -188,7 +189,7 @@ static int8_t  hub_rssi_up_dbm;
 static uint8_t hub_rssi_up_valid;
 
 /* Attempts, not deliveries: the hub's frames_ok is the numerator over this. */
-static uint16_t up_seq;
+static upseq_t up_seq;
 
 /* A silence this device imposed on itself. A reboot is not one: uptime_s says that.
  * radio_devices_docs/radio/tdma.md */
@@ -808,13 +809,13 @@ void report_service(void) {
             continue;
         }
         /* Spent at the seal, where the nonce is: a refused seal left no gap. */
-        rep.up_seq = up_seq;
+        rep.up_seq = upseq_pending(&up_seq);
         if (uplink_seal(sf, slot_n, join_res.dev_id_be, join_res.session,
                         &rep, f) != 0) {
             tlm_emit(TLM_TX_DENY, sf, TLM_WHY_SEAL, 0u, 0u);
             continue;
         }
-        up_seq++;
+        upseq_commit(&up_seq);
 
         uint32_t air = 0;
         while (!timebase_elapsed(slot_at - UPLINK_LEAD_US)) { }
@@ -1082,7 +1083,7 @@ void device_snapshot(device_view_t *v) {
     v->downlinks_repeat  = dl_repeats;
     v->downlinks_replay  = dl_replays;
     v->downlink_floor    = dl_floor_known ? dl_floor : 0u;
-    v->up_seq            = up_seq;
+    v->up_seq            = upseq_spent(&up_seq);
     v->app_len           = dl_app_len;
     v->app_any           = dl_app_any;
     v->app_witness       = dl_app_witness;
