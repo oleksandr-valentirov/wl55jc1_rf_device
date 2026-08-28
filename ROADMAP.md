@@ -723,6 +723,59 @@ Only visible because the records are timestamped; a counter shows the same
 Each of these binds the hub. Agree with the hub session before starting, and
 re-measure on air afterwards.
 
+### 88. The freshness bound is shorter than the listening cadence — `contract` `debt`
+
+`SUPERFRAME_FRESH_US` is `2 * SUPERFRAME_US`, four seconds, and it is the whole
+of `superframe_is_fresh()`, which is the whole of `superframe_can_schedule()`.
+At `report_every 8` this device opens a receive window once every **sixteen**
+seconds. So the predicate is false between every pair of reports **by
+construction** - not sometimes, and not on a bad link.
+
+Measured 2026-08-28 in the phase 6 rehearsal: `sync.lost since=4000012` after
+every single `tx.up`, for the whole window, on a link that delivered **214 frames
+with `0 bad`**. `bench/journal/2026-08-28-architect.md`.
+
+**Nothing is broken by it, and that is worth stating so nobody repairs the wrong
+thing.** Five use sites, all in `Core/Src/device.c`:
+
+| site | what it does |
+|---|---|
+| `telemetry_service()` | emits the `sync.ok` / `sync.lost` edge - an instrument |
+| `telemetry_service()` | the `0x10` bit of `beat` - an instrument |
+| `device_snapshot()` | `schedulable`, read only by `Core/Src/console.c` and carried nowhere north - an instrument |
+| `recover_service()` x2 | the only two that decide anything |
+
+And in `recover_service()` a false predicate does **not** start recovery: entry
+falls through to a separate gate on `RECOVER_LOST_US`, thirty seconds, which a
+beacon arriving every sixteen never reaches. **The transmit path is not gated on
+it at all**, which is why the reports kept landing on schedule throughout.
+
+So the cost is a false alarm rather than a fault, and it has already been paid
+once: the rehearsal stopped to investigate it. An operator watching a healthy
+board sees `sync.lost` every sixteen seconds and a console that reads `stale`
+three quarters of the time.
+
+**Two shapes, both named in the `verification` skill.** The record's name is
+broader than its fact - `sync.lost` reads as *this device lost synchronisation*
+and means *the last beacon is older than two superframes*. And the bound is
+pinned to one term of a product while the other moved: four seconds is right for
+a device that listens every superframe, and nothing followed `report_every` out
+to eight.
+
+**Two candidate remedies and the second is the honest one.** Rename the record to
+what it means, which moves nothing and costs nothing; or derive the bound from
+the listening cadence, so that freshness means *the beacon did not arrive when we
+were listening for it* rather than a fixed two superframes.
+
+The second is a library change - the constant lives in
+`radio_stack/inc/superframe.h` - so it is a contract debt rather than a device
+one. **But the agreement is cheaper than that usually implies**: checked
+2026-08-28, the hub has **no use site at all** for `SUPERFRAME_FRESH_US`,
+`superframe_is_fresh()` or `superframe_can_schedule()` - zero hits across CM4,
+CM7 and Common. This side is the only consumer the bound currently has.
+
+`radio_devices_docs/wl55_device/radio/timebase.md`.
+
 ### 9. `UPLINK_AIM_US` is a contract number that lives on one side — `contract`
 
 Where a frame sits inside its slot is the same kind of number as where the slot
