@@ -93,6 +93,10 @@ on the extra windows**. Reasoning on
 [`radio/beacon.md`](../radio_devices_docs/wl55_device/radio/beacon.md) § a device
 with no floor.
 
+**The eighth pass, 2026-08-27, retired items 77 and 22 and its note was never written** — added 2026-08-28 on finding the header's count of eight without an eighth description. Both went with [ADR-0036](../radio_devices_docs/radio/decisions/0036-variant-1-carries-no-asynchronous-events.md): variant 1 carries no asynchronous events, so *nothing on this board can fire the three opportunities* and *a sustained k = 3 is over the duty cycle* are both statements about a mechanism this stack does not have. The commit is *items 77 and 22 are retired, and the governor is a debt again*, and the governor it re-opened is item 25.
+
+**Four entries still cite 77 or 22 in their bodies** — a retired number is not a sentence, so nothing disagreed when they went stale. They read as history where they are dated and as live work where they are not; the rule this file already states for entry numbers applies to them: name the file, the symbol or the ADR instead.
+
 **What that pass did not measure is the benefit, and it says so at its own site.**
 Every arm ran with `frames_ok` non-zero for node A, so the hub does not radiate to
 it outside its own window and the extra windows were empty by construction. The
@@ -999,7 +1003,24 @@ a console read does not use. It produced twelve false negatives in one session:
 two harnesses reported zero pairing attempts by a node that was listening
 correctly.
 
-`radio_devices_docs/wl55_device/testing/bench-harness.md`.
+**Thirteenth false reading, 2026-08-28, and this one names where the cost lands.**
+Run `../bench/runs/2026-08-28-1/` is three arms of enrolment trials, and its
+harness read this node's `join` counters at each bracket. **The starvation only
+bit the arm that mattered**: in the two arms where every trial paired on the
+first window the window shut immediately and every read returned, while in the
+treatment arm — where windows stay open through failed attempts — a read came
+back with no `join` block at all. The harness substituted a default for the
+missing field and produced a fraction with a **negative denominator**, marked
+valid. One trial void.
+
+So the debt is not only that a read is slow. It is that **the read degrades
+exactly in the state a measurement of this node is most likely to be taken in**,
+and it degrades by returning nothing rather than by returning late. Any harness
+here has to treat a missing field as fatal and re-read; substituting a value is
+how a starved console becomes a number.
+
+`radio_devices_docs/wl55_device/testing/bench-harness.md`,
+`../bench/runs/2026-08-28-1/CONTROLS.md` § 6.
 
 ### 58. A device with no console still cannot be released — `blocking`
 
@@ -1023,15 +1044,19 @@ released only at a bench — and the second cannot cover the case this item exis
 for, which is a hub that is *gone*. Nothing should be built here until that is
 chosen.
 
-**Not verified on hardware, and it is no longer blocked on anything.** The claim
-here was that no route to a paired node existed: the WL55-to-WL55 fixture cannot
-complete an exchange (item 61) and the H755's roster was full. **Both halves have
-moved** — the hub's store was rebuilt on the ADR-0027 ring and node A completed a
-full four-frame exchange into slot 2, so a real pairing is available to release.
-What has run so far: both console arms link and flash, and the console-off
-build's record stream is unchanged — the same identity, off flash. The control
-still owed is unchanged and now runnable: release, read `ident`, confirm the id
-did not move, then pair and check the id the hub sees.
+**The hardware control is taken as of 2026-08-28, and the item stays open on the
+decision above it.** The control owed was: release, read `ident`, confirm the id
+did not move, then pair and check the id the hub sees. Run `2026-08-28-1` ran
+that loop **twenty-five times on node B** — `release`, `device remove`,
+`device add`, wait, read both sides — and across all of them `ident` held
+`dev FEF91007` while `gen` advanced and the hub read the same id back on every
+completed enrolment. `release` printed *released; identity kept, listening again
+for 600 s* on a paired node and *not paired; enrolment window reopened for 600 s*
+on an unpaired one, so both of its branches ran.
+
+That discharges *not verified on hardware* and nothing else. **What is left is
+the product route and it is still a decision**: under `-DWL55_CONSOLE=OFF` there
+is no way to release, and the candidates above are unchanged.
 
 `radio_devices_docs/radio/decisions/0024-the-device-id-is-the-whole-enrolment-anchor.md`.
 
